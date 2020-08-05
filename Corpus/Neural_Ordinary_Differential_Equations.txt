@@ -1,0 +1,2104 @@
+   Neural Ordinary Differential Equations
+
+Ricky T. Q. Chen*, Yulia Rubanova*, Jesse Bettencourt*, David Duvenaud
+      University of Toronto, Vector Institute
+   {rtqichen, rubanova, jessebett, duvenaud}@cs.toronto.edu
+
+                                   Abstract
+We introduce a new family of deep neural network models. Instead of specifying a
+discrete sequence of hidden layers, we parameterize the derivative of the hidden
+state using a neural network. The output of the network is computed using a black-
+box differential equation solver. These continuous-depth models have constant
+memory cost, adapt their evaluation strategy to each input, and can explicitly trade
+numerical precision for speed. We demonstrate these properties in continuous-depth
+residual networks and continuous-time latent variable models. We also construct
+continuous normalizing flows, a generative model that can train by maximum
+likelihood, without partitioning or ordering the data dimensions. For training, we
+show how to scalably backpropagate through any ODE solver, without access to its
+internal operations. This allows end-to-end training of ODEs within larger models.
+
+                               1   Introduction
+                                                                                                         
+Models such as residual networks, recurrent neural network decoders, and normalizing flows build 
+complicated transformations by composing a sequence of transformations to a hidden state:    
+
+                          <<FORMULA>>           (1)          
+                                                                        
+where t ∈ {0 . . . T } and ht ∈ R . These iterative updates can be seen as an Euler discretization of a
+continuous transformation (Lu et al., 2017; Haber and Ruthotto, 2017; Ruthotto and Haber, 2018).                    
+What happens as we add more layers and take smaller steps? In the limit, we parameterize the continuous     
+dynamics of hidden units using an ordinary differential equation (ODE) specified by a neural network:       
+Starting from the input layer h(0), we can define the output layer h(T ) to be the solution to this
+
+                          <<FORMULA>>           (2)                                  
+
+ODE initial value problem at some time T . This value can be computed by a black-box differential
+equation solver, which evaluates the hidden unit dynamics f wherever necessary to determine the
+solution with the desired accuracy. Figure 1 contrasts these two approaches.
+Defining and evaluating models using ODE solvers has several benefits:
+Memory efficiency In Section 2, we show how to compute gradients of a scalar-valued loss with
+respect to all inputs of any ODE solver, without backpropagating through the operations of the solver.
+Not storing any intermediate quantities of the forward pass allows us to train our models with constant
+memory cost as a function of depth, a major bottleneck of training deep models.
+32nd Conference on Neural Information Processing Systems (NeurIPS 2018), Montréal, Canada.
+Adaptive computation Euler’s method is perhaps the simplest method for solving ODEs. There
+have since been more than 120 years of development of efficient and accurate ODE solvers (Runge,
+1895; Kutta, 1901; Hairer et al., 1987). Modern ODE solvers provide guarantees about the growth
+of approximation error, monitor the level of error, and adapt their evaluation strategy on the fly to
+achieve the requested level of accuracy. This allows the cost of evaluating a model to scale with
+problem complexity. After training, accuracy can be reduced for real-time or low-power applications.
+Scalable and invertible normalizing flows An unexpected side-benefit of continuous transforma-
+tions is that the change of variables formula becomes easier to compute. In Section 4, we derive
+this result and use it to construct a new class of invertible density models that avoids the single-unit
+bottleneck of normalizing flows, and can be trained directly by maximum likelihood.
+Continuous time-series models Unlike recurrent neural networks, which require discretizing
+observation and emission intervals, continuously-defined dynamics can naturally incorporate data
+which arrives at arbitrary times. In Section 5, we construct and demonstrate such a model.
+2    Reverse-mode automatic differentiation of ODE solutions
+The main technical difficulty in training continuous-depth networks is performing reverse-mode
+differentiation (also known as backpropagation) through the ODE solver. Differentiating through
+the operations of the forward pass is straightforward, but incurs a high memory cost and introduces
+additional numerical error.
+We treat the ODE solver as a black box, and compute gradients using the adjoint sensitivity
+method (Pontryagin et al., 1962). This approach computes gradients by solving a second, aug-
+mented ODE backwards in time, and is applicable to all ODE solvers. This approach scales linearly
+with problem size, has low memory cost, and explicitly controls numerical error.
+Consider optimizing a scalar-valued loss function L(), whose input is the result of an ODE solver:
+                                      
+                                    <<FORMULA>>       (3)               
+
+To optimize L, we require gradients with respect to θ. The first step is to determining how the gradient 
+of the loss depends on the hidden state z(t) at each instant. This quantity is called the adjoint a(t) = ∂L/∂z(t). 
+Its dynamics are given by another ODE, which can be thought of as the State instantaneous analog of the chain rule:
+ Adjoint State
+
+                                    <<FORMULA>>       (4)
+
+We can compute ∂L/∂z(t0 ) by another call to an ODE solver. This solver must run backwards, starting from the initial 
+value of ∂L/∂z(t1 ). One complication is that solving this ODE requires the knowing value of z(t) along its entire tra-
+jectory. However, we can simply recompute z(t) backwards in time together with the adjoint, starting from its final 
+value z(t1 ).
+
+If the loss depends directly on the state at multi- Computing the gradients with respect to the pa-
+ple observation times, the adjoint state must be parameters θ requires evaluating a third integral,
+updated in the direction of the partial derivative of which depends on both z(t) and a(t):
+the loss with respect to each observation.                     
+
+                                  <<FORMULA>>         (5)
+
+The vector-Jacobian products <<FORMULA>> and <<FORMULA>> in (4) and (5) can be efficiently evaluated by
+automatic differentiation, at a time cost similar to that of evaluating f . All integrals for solving z, 
+and <<FORMULA>> can be computed in a single call to an ODE solver, which concatenates the original state, the
+adjoint, and the other partial derivatives into a single vector. Algorithm 1 shows how to construct the
+necessary dynamics, and call an ODE solver to compute all gradients at once.
+
+                                 <<ALGORITHM>>
+
+Most ODE solvers have the option to output the state z(t) at multiple times. When the loss depends
+on these intermediate states, the reverse-mode derivative must be broken into a sequence of separate
+solves, one between each consecutive pair of output times (Figure 2). At each observation, the adjoint
+must be adjusted in the direction of the corresponding partial derivative ∂L/∂z(ti ).
+The results above extend those of Stapor et al. (2018, section 2.4.2). An extended version of
+Algorithm 1 including derivatives w.r.t. t0 and t1 can be found in Appendix C. Detailed derivations
+are provided in Appendix B. Appendix D provides Python code which computes all derivatives for
+scipy.integrate.odeint by extending the autograd automatic differentiation package. This
+code also supports all higher-order derivatives. We have since released a PyTorch (Paszke et al.,
+2017) implementation, including GPU-based implementations of several standard ODE solvers at
+github.com/rtqichen/torchdiffeq.
+
+                   Replacing residual networks with ODEs for supervised learning
+
+In this section, we experimentally investigate the training of neural ODEs for supervised learning.
+Software To solve ODE initial value problems numerically, we use the implicit Adams method
+implemented in LSODE and VODE and interfaced through the scipy.integrate package. Being
+an implicit method, it has better guarantees than explicit methods such as Runge-Kutta but requires
+solving a nonlinear optimization problem at every step. This setup makes direct backpropagation
+through the integrator difficult. We implement the adjoint sensitivity method in Python’s autograd
+framework (Maclaurin et al., 2015). For the experiments in this section, we evaluated the hidden
+state dynamics and their derivatives on the GPU using Tensorflow, which were then called from the
+Fortran ODE solvers, which were called from Python autograd code.
+
+Model Architectures We experiment with a small residual network which downsamples the et al. (1998).
+input twice then applies 6 standard residual blocks He et al. (2016b), which are replaced by an ODESolve 
+module in the ODE-Net variant. We also test a network with the same architecture but where gradients are 
+backpropagated directly through a Runge-Kutta integrator, re-ferred to as RK-Net. Table 1 shows test error,
+number of parameters, and memory cost. L denotes the number of layers in the ResNet, and L̃ is the number 
+of function evaluations that the ODE solver
+requests in a single forward pass, which can be interpreted as an implicit number of layers. We find
+that ODE-Nets and RK-Nets can achieve around the same performance as the ResNet.
+Error Control in ODE-Nets ODE solvers can approximately ensure that the output is within a
+given tolerance of the true solution. Changing this tolerance changes the behavior of the network.
+We first verify that error can indeed be controlled in Figure 3a. The time spent by the forward call is
+proportional to the number of function evaluations (Figure 3b), so tuning the tolerance gives us a
+                                                      3
+trade-off between accuracy and computational cost. One could train with high accuracy, but switch to
+a lower accuracy at test time.
+         Figure 3: Statistics of a trained ODE-Net. (NFE = number of function evaluations.)
+Figure 3c) shows a surprising result: the number of evaluations in the backward pass is roughly
+half of the forward pass. This suggests that the adjoint sensitivity method is not only more memory
+efficient, but also more computationally efficient than directly backpropagating through the integrator,
+because the latter approach will need to backprop through each function evaluation in the forward
+pass.
+Network Depth It’s not clear how to define the ‘depth‘ of an ODE solution. A related quantity is
+the number of evaluations of the hidden state dynamics required, a detail delegated to the ODE solver
+and dependent on the initial state or input. Figure 3d shows that he number of function evaluations
+increases throughout training, presumably adapting to increasing complexity of the model.
+
+                     4    Continuous Normalizing Flows
+
+The discretized equation (1) also appears in normalizing flows (Rezende and Mohamed, 2015) and
+the NICE framework (Dinh et al., 2014). These methods use the change of variables theorem to
+compute exact changes in probability if samples are transformed through a bijective function f :
+
+                      <<FORMULA>>                             (6)
+
+An example is the planar normalizing flow (Rezende and Mohamed, 2015):
+
+                     <<FORMULA>>                             (7)
+
+Generally, the main bottleneck to using the change of variables formula is computing of the deter-
+minant of the Jacobian ∂f/∂z, which has a cubic cost in either the dimension of z, or the number
+of hidden units. Recent work explores the tradeoff between the expressiveness of normalizing flow
+layers and computational cost (Kingma et al., 2016; Tomczak and Welling, 2016; Berg et al., 2018).
+Surprisingly, moving from a discrete set of layers to a continuous transformation simplifies the
+computation of the change in normalizing constant:
+Theorem 1 (Instantaneous Change of Variables). Let z(t) be a finite continuous random variable
+with probability p(z(t)) dependent on time. Let dz  dt = f (z(t), t) be a differential equation describing
+a continuous-in-time transformation of z(t). Assuming that f is uniformly Lipschitz continuous in z
+and continuous in t, then the change in log probability also follows a differential equation,
+
+                                 <<FORMULA>>                 (8)
+
+Proof in Appendix A. Instead of the log determinant in (6), we now only require a trace operation.
+Also unlike standard finite flows, the differential equation f does not need to be bijective, since if
+uniqueness is satisfied, then the entire transformation is automatically bijective.
+As an example application of the instantaneous change of variables, we can examine the continuous
+analog of the planar flow, and its change in normalization constant:
+
+                               <<FORMULA>>                            (9)
+
+Given an initial distribution p(z(0)), we can sample from p(z(t)) and evaluate its density by solving
+this combined ODE.
+Using multiple hiddenP units with  P linear cost While det is not a linear function, the trace function
+is, which implies tr( n Jn ) = n tr(Jn ). Thus if our dynamics is given by a sum of functions then
+the differential equation for the log density is also a sum:
+
+
+                              <<FORMULA>>                              (10)
+ 
+This means we can cheaply evaluate flow models having many hidden units, with a cost only linear in
+the number of hidden units M . Evaluating such ‘wide’ flow layers using standard normalizing flows
+costs O(M 3 ), meaning that standard NF architectures use many layers of only a single hidden unit.
+Time-dependent dynamics We can specify the parameters of a flow as a function of t, making the
+differential equation f (z(t), t) change with t. This is parameterization is a kind of hypernetwork       
+(Ha et al., 2016). We also introduce a gating mechanism for each hidden unit, 
+
+                              <<FORMULA>>
+
+where σn (t) ∈ (0, 1) is a neural network that learns when the dynamic fn (z) should be applied. We
+call these models continuous normalizing flows (CNF).
+
+4.1    Experiments with Continuous Normalizing Flows
+
+We first compare continuous and discrete planar flows at learning to sample from a known distribution.
+We show that a planar CNF with M hidden units can be at least as expressive as a planar NF with
+K = M layers, and sometimes much more expressive.
+Density matching We configure the CNF as described above, and train for 10,000 iterations
+using Adam (Kingma and Ba, 2014). In contrast, the NF is trained for 500,000 iterations using
+RMSprop (Hinton et al., 2012), as suggested by Rezende and Mohamed (2015). For this task, we
+minimize KL (q(x)kp(x)) as the loss function where q is the flow model and the target density p(·)
+can be evaluated. Figure 4 shows that CNF generally achieves lower loss.
+Maximum Likelihood Training A useful property of continuous-time normalizing flows is that
+we can compute the reverse transformation for about the same cost as the forward pass, which cannot
+be said for normalizing flows. This lets us train the flow on a density estimation task by performing
+maximum likelihood estimation, which maximizes Ep(x) [log q(x)] where q(·) is computed using
+the appropriate change of variables theorem, then afterwards reverse the CNF to generate random
+samples from q(x).
+For this task, we use 64 hidden units for CNF, and 64 stacked one-hidden-unit layers for NF. Figure 5
+shows the learned dynamics. Instead of showing the initial Gaussian distribution, we display the
+transformed distribution after a small amount of time which shows the locations of the initial planar
+flows. Interestingly, to fit the Two Circles distribution, the CNF rotates the planar flows so that
+the particles can be evenly spread into circles. While the CNF transformations are smooth and
+interpretable, we find that NF transformations are very unintuitive and this model has difficulty fitting
+the two moons dataset in Figure 5b.
+
+               5  A generative latent function time-series model
+
+Applying neural networks to irregularly-sampled data such as medical records, network traffic, or
+neural spiking data is difficult. Typically, observations are put into bins of fixed duration, and the
+latent dynamics are discretized in the same way. This leads to difficulties with missing data and ill-
+defined latent variables. Missing data can be addressed using generative time-series models (Álvarez
+and Lawrence, 2011; Futoma et al., 2017; Mei and Eisner, 2017; Soleimani et al., 2017a) or data
+imputation (Che et al., 2018). Another approach concatenates time-stamp information to the input of
+an RNN (Choi et al., 2016; Lipton et al., 2016; Du et al., 2016; Li, 2017).
+We present a continuous-time, generative approach to modeling time series. Our model represents
+each time series by a latent trajectory. Each trajectory is determined from a local initial state, zt0 , and
+a global set of latent dynamics shared across all time series. Given observation times t0 , t1 , . . . , tN
+and an initial state zt0 , an ODE solver produces zt1 , . . . , ztN , which describe the latent state at each
+observation.We define this generative model formally through a sampling procedure:
+                             <<FORMULA>>                                    (11)
+                             <<FORMULA>>                                    (12)
+                             <<FORMULA>>                                    (13)
+Function f is a time-invariant function that takes the value z at the current time step and outputs the
+gradient: ∂z(t)/∂t = f (z(t), θf ). We parametrize this function using a neural net. Because f is time-
+
+invariant, given any latent state z(t), the entire latent trajectory is uniquely defined. Extrapolating
+this latent trajectory lets us make predictions arbitrarily far forwards or backwards in time.
+Training and Prediction We can train this latent-variable model as a variational autoen-
+coder (Kingma and Welling, 2014; Rezende et al., 2014), with sequence-valued observations. Our
+recognition net is an RNN, which consumes the data sequentially backwards in time, and out-
+puts qφ (z0 |x1 , x2 , . . . , xN ). A detailed algorithm can be found in Appendix E. Using ODEs as a
+generative model allows us to make predictions for arbitrary time points t1 ...tM on a continuous
+timeline.
+Poisson Process likelihoods The fact that an observation oc-
+curred often tells us something about the latent state. For ex-
+ample, a patient may be more likely to take a medical test if           
+they are sick. The rate of events can be parameterized by a
+function of the latent state: p(event at time t| z(t)) = λ(z(t)).
+Given this rate function, the likelihood of a set of indepen-
+dent observation times in the interval [tstart , tend ] is given by an                        t
+inhomogeneous Poisson process (Palm, 1943):                                
+
+We can parameterize λ(·) using another neural network. Con-
+veniently, we can evaluate both the latent trajectory and the
+Poisson process likelihood together in a single call to an ODE solver. Figure 7 shows the event rate
+learned by such a model on a toy dataset.
+A Poisson process likelihood on observation
+times can be combined with a data likelihood to
+jointly model all observations and the times at
+which they were made.
+
+5.1   Time-series Latent ODE Experiments 
+
+We investigate the ability of the latent ODE
+model to fit and extrapolate time series. The
+recognition network is an RNN with 25 hidden
+units. We use a 4-dimensional latent space. We
+parameterize the dynamics function f with a
+one-hidden-layer network with 20 hidden units.
+The decoder computing p(xti |zti ) is another              
+neural network with one hidden layer with 20                       
+hidden units. Our baseline was a recurrent neu-                   
+ral net with 25 hidden units trained to minimize                  
+negative Gaussian log-likelihood. We trained a                     
+second version of this RNN whose inputs were
+concatenated with the time difference to the next
+observation to aid RNN with irregular observations.
+Bi-directional spiral dataset We generated neural network. (b): Reconstructions and extrapo-
+a dataset of 1000 2-dimensional spirals, each lations by a latent neural ODE. Blue curve shows
+starting at a different point, sampled at 100 model prediction. Red shows extrapolation. (c) A
+equally-spaced timesteps. The dataset contains projection of inferred 4-dimensional latent ODE
+two types of spirals: half are clockwise while trajectories onto their first two dimensions. Color
+the other half counter-clockwise. To make the indicates the direction of the corresponding trajec-
+task more realistic, we add gaussian noise to the tory. The model has learned latent dynamics which
+observations.                                     
+                                                       
+progression through time, starting at purple and ending at red. Note that the trajectories on the left
+are counter-clockwise, while the trajectories on the right are clockwise.
+Time series with irregular time points To generate irregular timestamps, we randomly sample
+points from each trajectory without replacement (n = {30, 50, 100}). We report predictive root-
+mean-squared error (RMSE) on 100 time points extending beyond those that were used for training.
+Table 2 shows that the latent ODE has substantially lower predictive RMSE.
+
+We observed that reconstructions and extrapolations are consistent with the ground truth
+regardless of number of observed points and despite the noise.
+Latent space interpolation Figure 8c shows latent trajectories projected onto the first two dimen-
+sions of the latent space. The trajectories form two separate clusters of trajectories, one decoding to
+clockwise spirals, the other to counter-clockwise. Figure 9 shows that the latent trajectories change
+smoothly as a function of the initial point z(t0 ), switching from a clockwise to a counter-clockwise
+spiral.
+
+                        6    Scope and Limitations
+
+Minibatching The use of mini-batches is less straightforward than for standard neural networks.
+One can still batch together evaluations through the ODE solver by concatenating the states of each
+batch element together, creating a combined ODE with dimension D × K. In some cases, controlling
+error on all batch elements together might require evaluating the combined system K times more
+often than if each system was solved individually. However, in practice the number of evaluations did
+not increase substantially when using minibatches.
+Uniqueness When do continuous dynamics have a unique solution? Picard’s existence theo-
+rem (Coddington and Levinson, 1955) states that the solution to an initial value problem exists and is
+unique if the differential equation is uniformly Lipschitz continuous in z and continuous in t. This
+theorem holds for our model if the neural network has finite weights and uses Lipshitz nonlinearities,
+such as tanh or relu.
+Setting tolerances Our framework allows the user to trade off speed for precision, but requires
+the user to choose an error tolerance on both the forward and reverse passes during training. For
+sequence modeling, the default value of 1.5e-8 was used. In the classification and density estimation
+experiments, we were able to reduce the tolerance to 1e-3 and 1e-5, respectively, without degrading
+performance.
+Reconstructing forward trajectories Reconstructing the state trajectory by running the dynamics
+backwards can introduce extra numerical error if the reconstructed trajectory diverges from the
+original. This problem can be addressed by checkpointing: storing intermediate values of z on the
+forward pass, and reconstructing the exact forward trajectory by re-integrating from those points. We
+did not find this to be a practical problem, and we informally checked that reversing many layers of
+continuous normalizing flows with default tolerances recovered the initial states.
+                                                     8
+                        7    Related Work
+
+The use of the adjoint method for training continuous-time neural networks was previously pro-
+posed (LeCun et al., 1988; Pearlmutter, 1995), though was not demonstrated practically. The
+interpretation of residual networks He et al. (2016a) as approximate ODE solvers spurred research
+into exploiting reversibility and approximate computation in ResNets (Chang et al., 2017; Lu et al.,
+2017). We demonstrate these same properties in more generality by directly using an ODE solver.
+Adaptive computation One can adapt computation time by training secondary neural networks
+to choose the number of evaluations of recurrent or residual networks (Graves, 2016; Jernite et al.,
+2016; Figurnov et al., 2017; Chang et al., 2018). However, this introduces overhead both at training
+and test time, and extra parameters that need to be fit. In contrast, ODE solvers offer well-studied,
+computationally cheap, and generalizable rules for adapting the amount of computation.
+Constant memory backprop through reversibility Recent work developed reversible versions
+of residual networks (Gomez et al., 2017; Haber and Ruthotto, 2017; Chang et al., 2017), which gives
+the same constant memory advantage as our approach. However, these methods require restricted
+architectures, which partition the hidden units. Our approach does not have these restrictions.
+Learning differential equations Much recent work has proposed learning differential equations
+from data. One can train feed-forward or recurrent neural networks to approximate a differential
+equation (Raissi and Karniadakis, 2018; Raissi et al., 2018a; Long et al., 2017), with applica-
+tions such as fluid simulation (Wiewel et al., 2018). There is also significant work on connecting
+Gaussian Processes (GPs) and ODE solvers (Schober et al., 2014). GPs have been adapted to fit
+differential equations (Raissi et al., 2018b) and can naturally model continuous-time effects and
+interventions (Soleimani et al., 2017b; Schulam and Saria, 2017). Ryder et al. (2018) use stochastic
+variational inference to recover the solution of a given stochastic differential equation.
+Differentiating through ODE solvers The dolfin library (Farrell et al., 2013) implements adjoint
+computation for general ODE and PDE solutions, but only by backpropagating through the individual
+operations of the forward solver. The Stan library (Carpenter et al., 2015) implements gradient
+estimation through ODE solutions using forward sensitivity analysis. However, forward sensitivity
+analysis is quadratic-time in the number of variables, whereas the adjoint sensitivity analysis is
+linear (Carpenter et al., 2015; Zhang and Sandu, 2014). Melicher et al. (2017) used the adjoint
+method to train bespoke latent dynamic models.
+In contrast, by providing a generic vector-Jacobian product, we allow an ODE solver to be trained
+end-to-end with any other differentiable model components. While use of vector-Jacobian products
+for solving the adjoint method has been explored in optimal control (Andersson, 2013; Andersson
+et al., In Press, 2018), we highlight the potential of a general integration of black-box ODE solvers
+into automatic differentiation (Baydin et al., 2018) for deep learning and generative modeling.
+8    Conclusion
+We investigated the use of black-box ODE solvers as a model component, developing new models
+for time-series modeling, supervised learning, and density estimation. These models are evaluated
+adaptively, and allow explicit control of the tradeoff between computation speed and accuracy.
+Finally, we derived an instantaneous version of the change of variables formula, and developed
+continuous-time normalizing flows, which can scale to large layer sizes.
+9    Acknowledgements
+We thank Wenyi Wang and Geoff Roeder for help with proofs, and Daniel Duckworth, Ethan Fetaya,
+Hossein Soleimani, Eldad Haber, Ken Caluwaerts, Daniel Flam-Shepherd, and Harry Braviner for
+feedback. We thank Chris Rackauckas, Dougal Maclaurin, and Matthew James Johnson for helpful
+discussions. We also thank Yuval Frommer for pointing out an unsupported claim about parameter
+efficiency.
+                                                    9
+References
+Mauricio A Álvarez and Neil D Lawrence. Computationally efficient convolved multiple output
+   Gaussian processes. Journal of Machine Learning Research, 12(May):1459–1500, 2011.
+Brandon Amos and J Zico Kolter. OptNet: Differentiable optimization as a layer in neural networks.
+   In International Conference on Machine Learning, pages 136–145, 2017.
+Joel Andersson. A general-purpose software framework for dynamic optimization. PhD thesis, 2013.
+Joel A E Andersson, Joris Gillis, Greg Horn, James B Rawlings, and Moritz Diehl. CasADi – A
+   software framework for nonlinear optimization and optimal control. Mathematical Programming
+   Computation, In Press, 2018.
+Atilim Gunes Baydin, Barak A Pearlmutter, Alexey Andreyevich Radul, and Jeffrey Mark Siskind.
+   Automatic differentiation in machine learning: a survey. Journal of machine learning research, 18
+   (153):1–153, 2018.
+Rianne van den Berg, Leonard Hasenclever, Jakub M Tomczak, and Max Welling. Sylvester
+   normalizing flows for variational inference. arXiv preprint arXiv:1803.05649, 2018.
+Bob Carpenter, Matthew D Hoffman, Marcus Brubaker, Daniel Lee, Peter Li, and Michael Betan-
+   court. The Stan math library: Reverse-mode automatic differentiation in c++. arXiv preprint
+   arXiv:1509.07164, 2015.
+Bo Chang, Lili Meng, Eldad Haber, Lars Ruthotto, David Begert, and Elliot Holtham. Reversible
+   architectures for arbitrarily deep residual neural networks. arXiv preprint arXiv:1709.03698, 2017.
+Bo Chang, Lili Meng, Eldad Haber, Frederick Tung, and David Begert. Multi-level residual networks
+   from dynamical systems view. In International Conference on Learning Representations, 2018.
+   URL https://openreview.net/forum?id=SyJS-OgR-.
+Zhengping Che, Sanjay Purushotham, Kyunghyun Cho, David Sontag, and Yan Liu. Recurrent neural
+   networks for multivariate time series with missing values. Scientific Reports, 8(1):6085, 2018.
+   URL https://doi.org/10.1038/s41598-018-24271-9.
+Edward Choi, Mohammad Taha Bahadori, Andy Schuetz, Walter F. Stewart, and Jimeng Sun.
+   Doctor AI: Predicting clinical events via recurrent neural networks. In Proceedings of the 1st
+   Machine Learning for Healthcare Conference, volume 56 of Proceedings of Machine Learning
+   Research, pages 301–318. PMLR, 18–19 Aug 2016. URL http://proceedings.mlr.press/
+   v56/Choi16.html.
+Earl A Coddington and Norman Levinson. Theory of ordinary differential equations. Tata McGraw-
+   Hill Education, 1955.
+Laurent Dinh, David Krueger, and Yoshua Bengio. NICE: Non-linear independent components
+   estimation. arXiv preprint arXiv:1410.8516, 2014.
+Nan Du, Hanjun Dai, Rakshit Trivedi, Utkarsh Upadhyay, Manuel Gomez-Rodriguez, and Le Song.
+   Recurrent marked temporal point processes: Embedding event history to vector. In International
+   Conference on Knowledge Discovery and Data Mining, pages 1555–1564. ACM, 2016.
+Patrick Farrell, David Ham, Simon Funke, and Marie Rognes. Automated derivation of the adjoint of
+   high-level transient finite element programs. SIAM Journal on Scientific Computing, 2013.
+Michael Figurnov, Maxwell D Collins, Yukun Zhu, Li Zhang, Jonathan Huang, Dmitry Vetrov, and
+   Ruslan Salakhutdinov. Spatially adaptive computation time for residual networks. arXiv preprint,
+   2017.
+J. Futoma, S. Hariharan, and K. Heller. Learning to Detect Sepsis with a Multitask Gaussian Process
+   RNN Classifier. ArXiv e-prints, 2017.
+Aidan N Gomez, Mengye Ren, Raquel Urtasun, and Roger B Grosse. The reversible residual network:
+   Backpropagation without storing activations. In Advances in Neural Information Processing
+   Systems, pages 2211–2221, 2017.
+                                                    10
+Alex Graves. Adaptive computation time for recurrent neural networks.                 arXiv preprint
+   arXiv:1603.08983, 2016.
+David Ha, Andrew Dai, and Quoc V Le. Hypernetworks. arXiv preprint arXiv:1609.09106, 2016.
+Eldad Haber and Lars Ruthotto. Stable architectures for deep neural networks. Inverse Problems, 34
+   (1):014004, 2017.
+E. Hairer, S.P. Nørsett, and G. Wanner. Solving Ordinary Differential Equations I – Nonstiff Problems.
+   Springer, 1987.
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image
+   recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition,
+   pages 770–778, 2016a.
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Identity mappings in deep residual
+   networks. In European conference on computer vision, pages 630–645. Springer, 2016b.
+Geoffrey Hinton, Nitish Srivastava, and Kevin Swersky. Neural networks for machine learning lecture
+   6a overview of mini-batch gradient descent, 2012.
+Yacine Jernite, Edouard Grave, Armand Joulin, and Tomas Mikolov. Variable computation in
+   recurrent neural networks. arXiv preprint arXiv:1611.06188, 2016.
+Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint
+   arXiv:1412.6980, 2014.
+Diederik P. Kingma and Max Welling. Auto-encoding variational Bayes. International Conference
+   on Learning Representations, 2014.
+Diederik P Kingma, Tim Salimans, Rafal Jozefowicz, Xi Chen, Ilya Sutskever, and Max Welling.
+   Improved variational inference with inverse autoregressive flow. In Advances in Neural Information
+   Processing Systems, pages 4743–4751, 2016.
+W. Kutta. Beitrag zur näherungsweisen Integration totaler Differentialgleichungen. Zeitschrift für
+   Mathematik und Physik, 46:435–453, 1901.
+Yann LeCun, D Touresky, G Hinton, and T Sejnowski. A theoretical framework for back-propagation.
+   In Proceedings of the 1988 connectionist models summer school, volume 1, pages 21–28. CMU,
+   Pittsburgh, Pa: Morgan Kaufmann, 1988.
+Yann LeCun, Léon Bottou, Yoshua Bengio, and Patrick Haffner. Gradient-based learning applied to
+   document recognition. Proceedings of the IEEE, 86(11):2278–2324, 1998.
+Yang Li. Time-dependent representation for neural event sequence prediction. arXiv preprint
+   arXiv:1708.00065, 2017.
+Zachary C Lipton, David Kale, and Randall Wetzel. Directly modeling missing data in sequences with
+   RNNs: Improved classification of clinical time series. In Proceedings of the 1st Machine Learning
+   for Healthcare Conference, volume 56 of Proceedings of Machine Learning Research, pages 253–
+   270. PMLR, 18–19 Aug 2016. URL http://proceedings.mlr.press/v56/Lipton16.html.
+Z. Long, Y. Lu, X. Ma, and B. Dong. PDE-Net: Learning PDEs from Data. ArXiv e-prints, 2017.
+Yiping Lu, Aoxiao Zhong, Quanzheng Li, and Bin Dong. Beyond finite layer neural networks:
+   Bridging deep architectures and numerical differential equations. arXiv preprint arXiv:1710.10121,
+   2017.
+Dougal Maclaurin, David Duvenaud, and Ryan P Adams. Autograd: Reverse-mode differentiation of
+   native Python. In ICML workshop on Automatic Machine Learning, 2015.
+Hongyuan Mei and Jason M Eisner. The neural Hawkes process: A neurally self-modulating
+   multivariate point process. In Advances in Neural Information Processing Systems, pages 6757–
+   6767, 2017.
+                                                  11
+Valdemar Melicher, Tom Haber, and Wim Vanroose. Fast derivatives of likelihood functionals for
+   ODE based models using adjoint-state method. Computational Statistics, 32(4):1621–1643, 2017.
+Conny Palm. Intensitätsschwankungen im fernsprechverker. Ericsson Technics, 1943.
+Adam Paszke, Sam Gross, Soumith Chintala, Gregory Chanan, Edward Yang, Zachary DeVito,
+   Zeming Lin, Alban Desmaison, Luca Antiga, and Adam Lerer. Automatic differentiation in
+   pytorch. 2017.
+Barak A Pearlmutter. Gradient calculations for dynamic recurrent neural networks: A survey. IEEE
+  Transactions on Neural networks, 6(5):1212–1228, 1995.
+Lev Semenovich Pontryagin, EF Mishchenko, VG Boltyanskii, and RV Gamkrelidze. The mathemat-
+   ical theory of optimal processes. 1962.
+M. Raissi and G. E. Karniadakis. Hidden physics models: Machine learning of nonlinear partial
+   differential equations. Journal of Computational Physics, pages 125–141, 2018.
+Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Multistep neural networks for data-
+   driven discovery of nonlinear dynamical systems. arXiv preprint arXiv:1801.01236, 2018a.
+Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Numerical Gaussian processes for
+   time-dependent and nonlinear partial differential equations. SIAM Journal on Scientific Computing,
+  40(1):A172–A198, 2018b.
+Danilo J Rezende, Shakir Mohamed, and Daan Wierstra. Stochastic backpropagation and approximate
+   inference in deep generative models. In Proceedings of the 31st International Conference on
+  Machine Learning, pages 1278–1286, 2014.
+Danilo Jimenez Rezende and Shakir Mohamed. Variational inference with normalizing flows. arXiv
+   preprint arXiv:1505.05770, 2015.
+C. Runge. Über die numerische Auflösung von Differentialgleichungen. Mathematische Annalen, 46:
+  167–178, 1895.
+Lars Ruthotto and Eldad Haber. Deep neural networks motivated by partial differential equations.
+   arXiv preprint arXiv:1804.04272, 2018.
+T. Ryder, A. Golightly, A. S. McGough, and D. Prangle. Black-box Variational Inference for
+   Stochastic Differential Equations. ArXiv e-prints, 2018.
+Michael Schober, David Duvenaud, and Philipp Hennig. Probabilistic ODE solvers with Runge-Kutta
+   means. In Advances in Neural Information Processing Systems 25, 2014.
+Peter Schulam and Suchi Saria. What-if reasoning with counterfactual Gaussian processes. arXiv
+   preprint arXiv:1703.10651, 2017.
+Hossein Soleimani, James Hensman, and Suchi Saria. Scalable joint models for reliable uncertainty-
+   aware event prediction. IEEE transactions on pattern analysis and machine intelligence, 2017a.
+Hossein Soleimani, Adarsh Subbaswamy, and Suchi Saria. Treatment-response models for coun-
+   terfactual reasoning with continuous-time, continuous-valued interventions. arXiv preprint
+   arXiv:1704.02038, 2017b.
+Jos Stam. Stable fluids. In Proceedings of the 26th annual conference on Computer graphics and
+   interactive techniques, pages 121–128. ACM Press/Addison-Wesley Publishing Co., 1999.
+Paul Stapor, Fabian Froehlich, and Jan Hasenauer. Optimization and uncertainty analysis of ODE
+   models using second order adjoint sensitivity analysis. bioRxiv, page 272005, 2018.
+Jakub M Tomczak and Max Welling. Improving variational auto-encoders using Householder flow.
+   arXiv preprint arXiv:1611.09630, 2016.
+Steffen Wiewel, Moritz Becher, and Nils Thuerey. Latent-space physics: Towards learning the
+   temporal evolution of fluid flow. arXiv preprint arXiv:1802.10123, 2018.
+Hong Zhang and Adrian Sandu. Fatode: a library for forward, adjoint, and tangent linear integration
+   of ODEs. SIAM Journal on Scientific Computing, 36(5):C504–C523, 2014.
+                                           
+
+         Appendix A   Proof of the Instantaneous Change of Variables Theorem
+
+Theorem (Instantaneous Change of Variables). Let z(t) be a finite continuous random variable with probability
+p(z(t)) dependent on time. Let dz/dt = f (z(t), t) be a differential equation describing a continuous-in-time
+transformation of z(t). Assuming that f is uniformly Lipschitz continuous in z and continuous in t, then the
+change in log probability also follows a differential equation:
+
+                                 <<FORMULA>>
+
+Proof. To prove this theorem, we take the infinitesimal limit of finite changes of log p(z(t)) through time. First
+we denote the transformation of z over an ε change in time as
+                                 <<FORMULA>>                                           (14)
+We assume that f is Lipschitz continuous in z(t) and continuous in t, so every initial value problem has a unique
+solution by Picard’s existence theorem. We also assume z(t) is bounded. These conditions imply that f , Tε , and
+ ∂T are all bounded. In the following, we use these conditions to exchange limits and products.
+
+                                 <<FORMULA>>
+
+We can write the differential equation <<FORMULA>> using the discrete change of variables formula, and the
+definition of the derivative:
+
+                                 <<FORMULA>>                                                                    (15)
+
+                                 <<FORMULA>>                                                                    (16)
+
+                                 <<FORMULA>>                                           (by L’Hôpital’s rule)    (17)
+
+                                 <<FORMULA>>                                                                    (18)
+
+                                 <<FORMULA>>                                                                    (19)
+    
+                                 <<FORMULA>>                                                                    (20)
+
+The derivative of the determinant can be expressed using Jacobi’s formula, which gives
+
+                                 <<FORMULA>>                                                                    (21)
+
+                                 <<FORMULA>>                                                                    (22)
+    
+                                 <<FORMULA>>                                                                    (23)
+
+
+Substituting Tε with its Taylor series expansion and taking the limit, we complete the proof.
+
+                                 <<FORMULA>>                                                                    (24)
+
+                                 <<FORMULA>>                                                                    (25)
+
+                                 <<FORMULA>>                                                                    (26)
+    
+                                 <<FORMULA>>                                                                    (27)
+
+
+                                          A.1     Special Cases
+
+Planar CNF. Let f (z) = uh(wz + b), then  ∂z = u ∂h  ∂z. Since the trace of an outer product is the inner
+product, we have
+
+                                <<FORMULA>>                                                                     (28)
+
+This is the parameterization we use in all of our experiments.
+Hamiltonian CNF. The continuous analog of NICE (Dinh et al., 2014) is a Hamiltonian flow, which splits
+
+the data into two equal partitions and is a volume-preserving transformation, implying that ∂t = 0. We
+can verify this. Let
+
+                               <<FORMULA>>                                 (29)
+
+Then because the Jacobian is all zeros on its diagonal, the trace is zero. This is a volume-preserving flow.
+A.2     Connection to Fokker-Planck and Liouville PDEs
+The Fokker-Planck equation is a well-known partial differential equation (PDE) that describes the probability
+density function of a stochastic differential equation as it changes with time. We relate the instantaneous change
+of variables to the special case of Fokker-Planck with zero diffusion, the Liouville equation.
+As with the instantaneous change of variables, let z(t) ∈ RD evolve through time following dz(t)/dt = f (z(t), t).
+Then Liouville equation describes the change in density of z–a fixed point in space–as a PDE,
+
+                              <<FORMULA>>                                    (30)
+
+However, (30) cannot be easily used as it requires the partial derivatives of p(z,t)/∂z, which is typically approximated
+using finite difference. This type of PDE has its own literature on efficient and accurate simulation (Stam, 1999).
+Instead of evaluating p(·, t) at a fixed point, if we follow the trajectory of a particle z(t), we obtain
+
+                              <<FORMULA>>
+
+partial derivative from first argument, z(t) partial derivative from second argument, t
+
+                              <<FORMULA>>                                      (31)
+
+We arrive at the instantaneous change of variables by taking the log,
+
+                              <<FORMULA>>                                      (32)
+
+While still a PDE, (32) can be combined with z(t) to form an ODE of size D + 1,
+
+                              <<FORMULA>>                                       (33)
+
+Compared to the Fokker-Planck and Liouville equations, the instantaneous change of variables is of more
+practical impact as it can be numerically solved much more easily, requiring an extra state of D for following
+the trajectory of z(t). Whereas an approach based on finite difference approximation of the Liouville equation
+would require a grid size that is exponential in D.
+Appendix B             A Modern Proof of the Adjoint Method
+We present an alternative proof to the adjoint method (Pontryagin et al., 1962) that is short and easy to follow.
+                                                                         14
+B.1        Continuous Backpropagation
+
+Let z(t) follow the differential equation dt = f (z(t), t, θ), where θ are the parameters. We will prove that if
+we define an adjoint state
+
+                                                                <<FORMULA>>                                                            (34)
+
+then it follows the differential equation
+
+                                                               <<FORMULA>>                                                             (35)
+
+For ease of notation, we denote vectors as row vectors, whereas the main text uses column vectors.
+The adjoint state is the gradient with respect to the hidden state at a specified time t. In standard neural networks,
+the gradient of a hidden layer ht depends on the gradient from the next layer ht+1 by chain rule
+
+                                                                 <<FORMULA>>                                                            (36)
+
+With a continuous hidden state, we can write the transformation after an ε change in time as
+
+                                                                 <<FORMULA>>                                                            (37)
+ 
+                                                                 <<FORMULA>>                                                            (38)
+
+The proof of (35) follows from the definition of derivative:
+
+              <<FORMULA>>                                                                                                               (39)
+
+              <<FORMULA>>                                                                                     (by Eq 38)                (40)
+
+              <<FORMULA>>                                                                        (Taylor series around z(T))            (41)
+
+              <<FORMULA>>                                                                                                               (42)
+
+              <<FORMULA>>                                                                                                               (43)
+
+             <<FORMULA>>                                                                                                                (44)
+  
+             <<FORMULA>>                                                                                                                (45)
+
+We pointed out the similarity between adjoint method and backpropagation (eq. 38). Similarly to backpropaga-
+tion, ODE for the adjoint state needs to be solved backwards in time. We specify the constraint on the last time
+point, which is simply the gradient of the loss wrt the last time point, and can obtain the gradients with respect to
+the hidden state at any time, including the initial value.
+
+                                 <<FORMULA>>                   (46)
+
+Here we assumed that loss function L depends only on the last time point tN . If function L depends also on
+intermediate time points t1 , t2 , . . . , tN −1 , etc., we can repeat the adjoint step for each of the intervals [tN −1 , tN ],
+[tN −2 , tN −1 ] in the backward order and sum up the obtained gradients.
+B.2        Gradients wrt. θ and t
+We can generalize (35) to obtain gradients with respect to θ–a constant wrt. t–and and the initial and end times,
+t0 and tN . We view θ and t as states with constant differential equations and write
+
+                                  <<FORMULA>>                                                 (47)
+
+We can then combine these with z to form an augmented state1 with corresponding differential equation and
+adjoint state,
+
+                                    <<FORMULA>>                 (48)
+
+Note this formulates the augmented ODE as an autonomous (time-invariant) ODE, but the derivations in the
+previous section still hold as this is a special case of a time-variant ODE. The Jacobian of f has the form
+
+                                      <<FORMULA>>                                (49)
+
+where each 0 is a matrix of zeros with the appropriate dimensions. We plug this into (35) to obtain
+
+                                    <<FORMULA>>                                  (50)
+
+The first element is the adjoint differential equation (35), as expected. The second element can be used to obtain
+the total gradient with respect to the parameters, by integrating over the full interval and setting aθ (tN ) = 0.
+
+                                       <<FORMULA>>                               (51)
+
+Finally, we also get gradients with respect to t0 and tN , the start and end of the integration interval.
+
+                                       <<FORMULA>>                               (52)
+
+Between (35), (46), (51), and (52) we have gradients for all possible inputs to an initial value problem solver.
+
+            Appendix C              Full Adjoint sensitivities algorithm
+
+This more detailed version of Algorithm 1 includes gradients with respect to the start and end times of integration.
+Algorithm 2 Complete reverse-mode derivative of an ODE initial value problem
+
+Input: dynamics parameters θ, start time t0 , stop time t1 , final state z(t1 ), loss gradient ∂L/∂z(t1 )
+
+                  <<ALGORITHM>>
+
+Note that we’ve overloaded t to be both a part of the state and the (dummy) independent variable. The
+distinction is clear given context, so we keep t as the independent variable for consistency with the rest of the
+text.
+
+                     Appendix D                Autograd Implementation
+
+                        <<ALGORITHM>>
+
+                     Appendix E               Algorithm for training the latent ODE model
+
+To obtain the latent representation zt0 , we traverse the sequence using RNN and obtain parameters of distribution
+q(zt0 |{xti , ti }i , θenc ). The algorithm follows a standard VAE algorithm with an RNN variational posterior and
+an ODESolve model:
+                                       <<ALGORITHM>>
+                                        <<FORMULA>>                         (53)
+                                       <<ALGORITHM>>
+
+                     Appendix F               Extra Figures
+
+                                       <<FIGURE>>
+
+
+              Learning differential equations that are easy to solve
+
+                      Jacob Kelly∗                                Jesse Bettencourt∗
+         University of Toronto, Vector Institute         University of Toronto, Vector Institute
+             jkelly@cs.toronto.edu                          jessebett@cs.toronto.edu
+             Matthew James Johnson                               David Duvenaud
+               Google Brain                                 University of Toronto, Vector Institute
+
+            mattjj@google.com                           duvenaud@cs.toronto.edu
+
+                                                                                       Abstract
+
+
+Differential equations parameterized by neural networks become expensive to solve
+numerically as training progresses. We propose a remedy that encourages learned
+dynamics to be easier to solve. Specifically, we introduce a differentiable surrogate
+for the time cost of standard numerical solvers, using higher-order derivatives
+of solution trajectories. These derivatives are efficient to compute with Taylor-
+mode automatic differentiation. Optimizing this additional objective trades model
+performance against the time cost of solving the learned dynamics. We demonstrate
+our approach by training substantially faster, while nearly as accurate, models in
+supervised classification, density estimation, and time-series modelling tasks.
+
+                    1       Introduction
+
+Differential equations describe a system’s behavior by specifying its instantaneous dynamics. 
+Historically, differential equations have been derived from theory, such as Newtonian mechanics, 
+Maxwell’s equations, or epidemiological models of infectious disease, with parameters inferred 
+from observations. Solutions to these equations usually cannot be expressed in closed-form, 
+requiring numerical approximation. Recently, ordinary differential equations parameterized by 
+millions of learned parameters, called neural ODEs, have been fit for latent time series models, 
+density models, or as a replacement for very deep neural networks (Rubanova et al., 2019; Grath-
+wohl et al., 2019; Chen et al., 2018). These models are not constrained to match a theoretical 
+model,and sometimes substantially different dynamics can give nearly indistinguishable predictions. 
+This raises the possibility that we can find nearly equivalent models that are substantially easier
+and faster to solve. Yet standard training methods have no way to penalize the complexity of the 
+dynamics being learned.                                                  
+
+                          <<FIGURE>>
+
+Equal Contribution. Code available at: github.com/jacobjinkelly/easy-neural-ode
+
+How can we learn dynamics that are faster to solve numerically without substantially changing their
+predictions? Much of the computational advantages of a continuous-time formulation come from
+using adaptive solvers, and most of the time cost of these solvers comes from repeatedly evaluating
+the dynamics function, which in our settings is a moderately-sized neural network. So, we’d like to
+reduce the number of function evaluations (NFE) required for these solvers to reach a given error
+tolerance. Ideally, we would add a term penalizing the NFE to the training objective, and let a
+gradient-based optimizer trade off between solver cost and predictive performance. But because NFE
+is integer-valued, we need to find a differentiable surrogate.
+The NFE taken by an adaptive solver depends on how far it can extrapolate the trajectory forward
+without introducing too much error. For example, for a standard adaptive-step Runge-Kutta solver
+with order m, the step size is approximately inversely proportional to the norm of the local mth total
+derivative of the solution trajectory with respect to time. That is, a larger mth derivative leads to a
+smaller step size and thus more function evaluations. Thus, we propose to minimize the norm of this
+total derivative during training, as a way to control the time required to solve the learned dynamics.
+In this paper, we investigate the effect of this speed regularization in various models and solvers.
+We examine the relationship between the solver order and the regularization order, and characterize
+the tradeoff between speed and performance. In most instances, we find that solver speed can be
+approximately doubled without a substantial increase in training loss. We also provide an extension
+to the JAX program transformation framework that provides Taylor-mode automatic differentiation,
+which is asymptotically more efficient for computing the required total derivatives than standard
+nested gradients.
+Our work compares against and generalizes that of Finlay et al. (2020), who proposed regularizing
+dynamics in the FFJORD density estimation model, and showed that it stabilized dynamics enough
+in that setting to allow the use of fixed-step solvers during training.
+2    Background
+An ordinary differential equation (ODE) specifies the instantaneous change of a vector-valued state
+<<FORMULA>>, computing the state at a later time:
+
+                                    <<FORMULA>>
+
+is called an initial value problem (IVP). For example, f could describe the equations of motion for a
+particle, or the transmission and recovery rates for a virus across a population. Usually, the required
+integral has no analytic solution, and must be approximated numerically.
+Adaptive-step Runge-Kutta ODE Solvers Runge-Kutta methods (Runge, 1895; Kutta, 1901)
+approximate the solution trajectories of ODEs through a series of small steps, starting at time t0 .
+At each step, they choose a step size h, and fit a local approximation to the solution, ẑ(t), using
+several evaluations of f . When h is sufficiently small, the numerical error of a mth-order method
+is bounded by kẑ(t + h) − z(t + h)k ≤ chm+1 for some constant c (Hairer et al., 1993). So, for a
+mth-order method, the local error grows approximately in proportion to the size of the mth coefficient
+in the Taylor expansion of the true solution. All else being equal, controlling this coefficient for all
+dimensions of z(t) will allow larger steps to be taken without surpassing the error tolerance.
+Neural Ordinary Differential Equations The dynamics function f can be a moderately-sized
+neural network, and its parameters θ trained by gradient descent. Solving the resulting IVP is
+analogous to evaluating a very deep residual network in which the number of layers corresponds
+to the number of function evaluations of the solver (Chang et al., 2017; Ruthotto & Haber, 2018;
+Chen et al., 2018). Solving such continuous-depth models using adaptive numerical solvers has
+several computational advantages over standard discrete-depth network architectures. However, this
+approach is often slower than using a fixed-depth network, due to an inability to control the number
+of steps required by an adaptive-step solver.
+
+                        3   Regularizing Higher-Order Derivatives for Speed
+
+The ability of Runge-Kutta methods to take large and accurate steps is limited by the Kth-order
+Taylor coefficients of the solution trajectory. We would like these coefficients to be small. Specifically,
+we propose to regularize the squared norm of the Kth-order total derivatives of the state with respect
+to time, integrated along the entire solution trajectory:
+
+                                     <<FORMULA>>                                  (1)
+
+where k·k2 is the squared `2 norm, and the dependence on the dynamics parameters θ is implicit
+through the solution z(t) integrating dz(t)
+
+                                       dt = f (z(t), t, θ). 
+
+During training, we weigh this regularization term by a hyperparameter λ and add it to our original loss 
+to get our regularized objective:
+
+                                     <<FORMULA>>                                   (2)
+
+What kind of solutions are allowed when RK = 0? For K = 0,
+
+                                     <<FORMULA>>
+
+we have kz(t)k2 = 0, so the only possible solution is z(t) = 0.                  
+
+For K = 1, we have kf (z(t), t)k2 = 0, so all solutions are
+constant, flat trajectories. For K = 2 solutions are straight-line               
+trajectories. Higher values of K shrink higher derivatives, but
+don’t penalize lower-order dynamics. For instance, a quadratic                      
+trajectory will have R3 = 0. Setting the Kth order dynamics to
+exactly zero everywhere automatically makes all higher orders                        
+zero as well. Figure 1 shows that regularizing R3 on a toy 1D
+neural ODE reduces NFE.     
+
+                                    <<FIGURE>>
+                                                                                     
+Which orders should we regularize? We propose matching the
+order of the regularizer to that of the solver being used. We        
+conjecture that regularizing dynamics of lower orders than that     
+of the solver restricts the model unnecessarily, and that let-     
+ting the lower orders remain unregularized should not increase    
+NFE very much. Figure 2 shows empirically which orders           
+of Runge-Kutta solvers can efficiently solve which orders of       
+toy polynomial trajectories. We test these conjectures on real      
+models and datasets in section 6.2.                             
+
+The solution trajectory and our regularization term can be computed in a single call to an ODE solver
+by augmenting the system with the integrand in eq. (1).
+
+            4   Efficient Higher Order Differentiation with Taylor Mode
+
+The number of terms in higher-order forward derivatives grows exponentially in K, becoming
+prohibitively expensive for K = 5, and causing substantial slowdowns even for K = 2 and K = 3.
+Luckily, there exists a generalization of forward-mode automatic differentiation (AD), known as
+Taylor mode, which can compute the total derivative exactly for a cost of only O(K 2 ). We found
+that this asymptotic improvement reduced wall-clock time by an order of magnitude, even for K as
+low as 3.
+First-order forward-mode AD Standard forward-mode AD computes, for a function f (x) and
+an input perturbation vector v, the product ∂f  ∂x v. This Jacobian-vector product, or JVP, can be
+computed efficiently without explicitly instantiating the Jacobian. This implicit computation of JVPs
+is straightforward whenever f is a composition of operations for which which implicit JVP rules are
+known.
+Higher-order Jacobian-vector products Forward-mode AD can be generalized to higher orders
+                                                                                            K
+to compute Kth-order Jacobians contracted K times against the perturbation vector: ∂∂xKf v ⊗K .
+Similarly, this can also be computed without representing any Jacobian matrices explicitly.
+
+A naïve approach to higher-order forward mode is to recursively apply first-order forward mode.
+                                                             K
+Specifically, nesting JVPs K times gives the right answer: <<FORMULA>> but
+causes an unnecessary exponential slowdown, costing O(exp(K)). This is because expressions that
+appear in lower derivatives also appear in higher derivatives, but the work to compute is not shared
+across orders.
+Taylor Mode Taylor-mode AD generalizes             Function               Taylor propagation rule
+first-order forward mode to compute the first    y = z + cw                   y[k] = z[k] + cw[k]
+K derivatives exactly with a time cost of only                                     Pk
+O(K 2 ) or O(K log K), depending on the op-       y =z∗w                  y[k] =  h j=0   z[j] w[k−j] i
+                                                                                       Pk−1
+erations involved. Instead of providing rules      y = z/w         y[k] = w10 zk − j=0 z[j] w[k−j]
+for propagating perturbation vectors, one pro-                                     Pk
+                                                 y = exp(z)                ỹ[k] = j=1 y[k−j] z̃[j]
+vides rules for propagating truncated Taylor                                       Pk
+series. Some example rules are shown in ta-      s = sin(z)                s̃[k] = j=1 z̃[j] c[k−j]
+                                                                                   Pk
+ble 1. For more details see the Appendix and     c = cos(z)              c̃[k] = j=1 −z̃[j] s[k−j]
+Griewank & Walther (2008, Chapter 12). We
+provide an open source implementation of Table 1: Rules for propagating Taylor polynomial
+Taylor mode AD in the JAX Python library coefficients through standard functions. These rules
+(Bradbury et al., 2018).                       generalize standard first-order derivatives. Notation
+                                               z[i] = i!1 zi and ỹ[i] = i!i zi .
+
+                     5     Experiments
+                                                                                    100                                            10
+We consider three different tasks in which continuous-
+                                                                                                                                        Training Error (%)
+depth or continuous time models might have computa-                                                             λ = 3.02e-03
+                                                                      Average NFE
+                                                                                     80                         λ=0
+tional advantages over standard discrete-depth models:
+supervised learning, continuous generative modeling of                                                                             5
+time-series (Rubanova et al., 2019), and density estima-                             60
+tion using continuous normalizing flows (Grathwohl et al.,
+2019). Unless specified otherwise, we use the standard
+                                                                                     40
+dopri5 Runge-Kutta 4(5) solver (Dormand & Prince,
+1980; Shampine, 1986).                                                                    0         50         100       150
+                                                                                                     Training Epoch
+5.1   Supervised Learning                                             Figure 3: Number of function evalua-
+                                                                      tions (NFE) and training error during
+We construct a model for MNIST classification: it takes in            training. Speed regularization (solid)
+as input a flattened MNIST image and integrates it through            decreases the NFE throughout training
+dynamics given by a simple MLP, then applies a linear                 without substantially changing the train-
+classification layer. In fig. 3 we compare the NFE and                ing error.
+training error of a model with and without regularizing
+R3 .
+                                                                  5                                       5
+5.2   Continuous Generative Time Series Models
+As in Rubanova et al. (2019), we use the Latent ODE        z20    0                                z20    0
+architecture for modelling trajectories of ICU patients
+using the PhysioNet Challenge 2012 dataset (Silva
+et al., 2012). This variational autoencoder architec-            −5                                      −5
+ture uses an RNN recognition network, and models                      −5                      0          5 −5       0          5
+                                                                                              z1                    z1
+the state dynamics using an ODE in a latent space.
+                                                                  (a) Unregularized                             (b) Regularized
+In the supervised learning setting described in the
+previous section only the final state affects model pre- Figure 4: Regularizing dynamics in a la-
+dictions. In contrast, time-series models’ predictions tent ODE modeling PhysioNet clinical data.
+also depend on the value of the trajectory at all inter- Shown are a representative 2-dimensional
+mediate times when observations were made. So, we slice of 20 dimensional dynamics. We re-
+might expect speed regularization to be ineffective duce average NFE from 281 to 90 while only
+due to these extra constraints on the dynamics. How- incurring an 8% increase in loss.
+ever, fig. 4 shows that, without changing their overall
+shape the latent dynamics can be adjusted to reduce their NFE by a factor of 3.
+                                                     4
+5.3                       Density Estimation with Continuous Normalizing Flows
+Our third task is unsupervised density estimation, using a scalable variant of continuous normalizing
+flows called FFJORD (Grathwohl et al., 2019). We fit the MINIBOONE tabular dataset from
+Papamakarios et al. (2017) and the MNIST image dataset (LeCun et al., 2010). We use the respective
+singe-flow architectures from Grathwohl et al. (2019).
+Grathwohl et al. (2019) noted that the NFE required to numerically integrate their dynamics could
+become prohibitively expensive throughout training. Table 2 shows that we can reduce NFE by 38%
+for only a 0.6% increase in log-likelihood measured in bits/dim.
+How to train your Neural ODE We compare against the approach of Finlay et al. (2020), who
+design two regularization terms specifically for stabilizing the dynamics of FFJORD models:
+                              Z t1
+                                                   2
+                     K(θ) =        kf (z(t), t, θ)k2 dt                                     (3)
+                                                      t0
+                                                      Zt1
+                                                                                 2
+                                             B(θ) =         k| ∇z f (z(t), t, θ)k2 dt,    ∼ N (0, I)                                (4)
+                                                      t0
+The first term is designed to encourage straight-line paths, and the second, stochastic, term is designed
+to reduce overfitting. Finlay et al. (2020) used fixed-step solvers during training for some datasets.
+We compare these two regularization on training with each of adaptive and fixed-step solvers, and
+evaluated using an adaptive solver, in section 6.3.
+6                        Analysis and Discussion
+6.1                       Trading off function evaluations for loss
+What does the trade off between accuracy and speed look like? Ideally, we could reduce the solver
+time a lot without substantially reducing model performance. Indeed, this is demonstrated in all three
+settings we explored. Figure 5 shows that generally, model performance starts getting substantially
+worse only after a 50% reduction in solver speed when controlling R2 .
+                                                                  ×10−3                                                 103
+                                                                                          17.0
+    Unregularized Loss                                                                                                         Regularization (λ)
+                         0.25
+                                                            3.4
+                                                                                                                        10−1
+                         0.15                                                             13.5
+                                                            3.2                                                         10−5
+                         0.05
+                                                                                          10.0
+                                                            3.0                                                         10−9
+                                30        60     90               0   75 150 225 300             80        120    160
+                                     Average NFE                      Average NFE                     Average NFE
+                          (a) MNIST Classification            (b) PhysioNet Time-Series    (c) Miniboone Density Estimation
+Figure 5: Tuning the regularization of R2 trades off between training loss and solver speed in three
+different applications of neural ODEs. Horizontal axes show average number of function evaluations,
+and vertical axes show unregularized training loss, both at the end of training.
+6.2 Order of regularization vs. order of solver
+Which order of total derivatives should we regularize for a particular solver? As mentioned earlier,
+we conjecture that the best choice would be to match the order of the solver being used. Regularizing
+too low an order might needlessly constrain the dynamics and make it harder to fit the data, while
+regularizing too high an order might leave the dynamics difficult to solve for a lower-order solver.
+However, we also expect that optimizing higher-order derivatives might be challenging, since these
+higher derivatives can change quickly even for small changes to the dynamics parameters.
+Figures 6 and 7 investigate this question on the task of MNIST classification. Figure 6 compares the
+effectiveness of regularizing different orders when using a solver of a particular order. For a 2nd
+order solver, regularizing K = 2 produces a strictly better trade-off between performance and speed,
+as expected. For higher-order solvers, including ones with adaptive order, we found that regularizing
+orders above K = 3 gave little benefit.
+
+               <<FIGURE>>
+
+               <<FIGURE>>
+Figure 7 investigates the relationship between RK and the quantity it is meant to be a surrogate
+for: NFE. We observe a clear monotonic relationship between the two, for all orders of solver and
+regularization.
+
+               6.3          Do we reduce training time?
+
+Our approach produces models that are fastest to evaluate at test time. However, when we train
+with adaptive solvers we do not improve overall training time, due to the additional expense of
+computing our regularizer. Training with a fixed-grid solver is faster, but can be unstable if dynamics
+are unregularized. Finlay et al. (2020)’s regularization and ours allow us to use fixed grid solvers and
+reduce training time. However, ours is 2.4× slower than Finlay et al. (2020) for FFJORD because
+their regularization re-uses terms already computed in the FFJORD training objective. For objectives
+where these cannot be re-used, like MNIST classification, our method is 1.7× slower, but achieves
+better test-time NFE.
+
+               6.4       Are we making the solver overconfident?
+
+Because we optimize dynamics in a way specifically designed to make the solver take longer steps,
+we might fear that we are “adversarially attacking” our solver, making it overconfident in its ability
+to extrapolate. Figure 8c shows that this is not the case for MNIST classification.
+
+               6.5       Does speed regularization overfit?
+
+Finlay et al. (2020) motivated one of their regularization terms by the possibility of overfitting: having
+faster dynamics only for the examples in the training set, but still low on the test set. However, they
+did not check whether overfitting was occurring. In fig. 8b we confirm that our regularized dynamics
+have nearly identical average solve time on a held-out test set, on MNIST classification.
+
+                             7        Related Work
+
+Although the field of numerical ODE solvers is extremely mature, as far as we know, there has
+been almost no work specifically on tuning differential equations to be faster to solve. The closest
+
+                                 <<FIGURE>>
+Figure 8: Figure 8c We observe that the actual solver error is about equally well-calibrated for
+regularized dynamics as random dynamics, indicating that regularization does not make the solver
+overconfident. Figure 8b: There is negligible overfitting of solver speed. ??: Speed regularization
+does not usefully improve generalization. For large λ, our method reduces overfitting, but increases
+overall test error due to under-fitting.
+
+related work is Grathwohl et al. (2019) who mention attempting to use weight decay and spectral
+normalization to reduce NFE, and of course Finlay et al. (2020), who, among other contributions,
+introduced the use of fixed-step solvers for stable training.
+Stabilizing dynamics Simard et al. (1991) regularized the dynamics of discrete-time recurrent
+neural networks to improve their stability, by constraining the norm of the Jacobian of the dynamics
+function in the direction of its largest eigenvalue. However, this approach has an O(D3 ) time cost.
+De Brouwer et al. (2019) introduced a parameterization of neural ODEs analogous to instantaneous
+Gated Recurrent Unit (GRU) recurrent neural network architectures in order to stabilize training
+dynamics. Dupont et al. (2019) provided theoretical arguments that adding extra dimensions to the
+state of a neural ODE should make training easier, and showed that this helped reduce NFE during
+training.
+Gradually increasing depth Chang et al. (2017) noted the connection between residual networks
+and ODEs, and took advantage of this connection to gradually make resnets deeper during training,
+in order to save time. One can view the increase in NFE while neural ODEs as an automatic, but
+uncontrolled, version of their method. Their results suggest we might benefit from introducing a
+speed regularization schedule that gradually tapers off during training.
+Gradient Regularization Novak et al. (2018); Drucker & LeCun (1992) regularized the gradients
+of neural networks to improve generalization.
+Table 2: Density Estimation on MNIST using FFJORD. For adaptive solvers, indicated by ∞ Steps,
+our approach is slowest to train, but requires the fewest NFE once trained. For fixed-step solvers our
+approach achieves lower bits/dim and NFE when comparing across fixed-grid solvers using the same
+number of steps. Fixed step solvers that diverged due to instability are indicated by NaN bits/dim.
+  
+                        8    Scope
+
+The initial speedups obtained in this paper are not yet enough to make neural ODEs competitive with
+standard fixed-depth architectures in terms of speed for standard supervised learning. However, there
+are many applications where continuous-depth architectures provide a unique advantage. Besides
+density models such as FFJORD and time series models, continuous-depth architectures have been
+applied in solving mean-field games (Ruthotto et al., 2019), image segmentation (Pinckaers & Litjens,
+2019), image super-resolution (Scao, 2020), and molecular simulations (Wang et al., 2020). These
+applications, which already use continuous-time models, could benefit from the speed regularization
+proposed in this paper.
+While we investigated only ODEs in this paper, this approach could presumably be extended straight-
+forwardly to neural stochastic differential equations fit by adaptive solvers (Li et al., 2020) and other
+flavors of parametric differential equations fit by gradient descent (Rackauckas et al., 2019).
+
+                      9    Limitations
+
+Hyperparameters The hyperparameter λ needs to be chosen to balance speed and training loss.
+One the other hand, neural ODEs don’t require choosing the outer number of layers, which needs to
+be chosen separately for each stack of layers in standard architectures.
+One also needs to choose solver order and tolerances, and these can substantially affect solver speed.
+We did not investigate loosening tolerances, or modifying other parameters of the solver. The default
+tolerance of 1.4e-8 for both atol and rtol behaved well in all our experiments.
+One also needs to choose K. Higher K seems to generally work better, but is slower per step at
+training time. In principle, if one can express their utility explicitly in terms of training loss and NFE,
+it may be possible to tune λ automatically during training using the predictable relationship between
+RK and NFE shown in fig. 7.
+Slower overall training Although speed regularization reduces the overall NFE during training, it
+makes each step more expensive. In our density estimation experiments (table 2), the overall effect
+was about about 70% slower training, compared to no regularization, when using adaptive solvers.
+However, test-time evaluation is much faster, since there is no slowdown per step.
+10     Conclusions
+This paper is an initial attempt at controlling the integration time of differential equations by regular-
+izing their dynamics. This is an almost unexplored problem, and there are almost certainly better
+quantities to optimize than the ones examined in this paper.
+Based on these initial experiments, we propose three practical takeaways:
+       1. Across all tasks, tuning the regularization usually gave at least a 2x speedup without
+          substantially hurting model performance.
+       2. Overall training time with speed regularization is in general about 30% to 50% slower with
+          adaptive solvers.
+       3. For standard solvers, regularizing orders higher than R2 or R3 provided little additional
+          benefit.
+Future work It may be possible to adapt solver architectures to take advantage of flexibility in
+choosing the dynamics. Standard solver design has focused on robustly and accurately solving a
+given set of differential equations. However, in a learning setting, we could consider simply rejecting
+some kinds of dynamics as being too difficult to solve, analogous to other kinds of constraints we put
+on models to encourage statistical regularization.
+                                                   
+                        Acknowledgements
+
+We thank Barak Perlmutter, Ken Jackson, Ricky T.Q. Chen, Will Grathwohl, Chris Finlay, and
+Chris Rackauckas for feedback and helpful discussions. Resources used in preparing this research
+were provided, in part, by the Province of Ontario, the Government of Canada through CIFAR, and
+companies sponsoring the Vector Institute.
+
+                        References
+
+Bradbury, J., Frostig, R., Hawkins, P., Johnson, M. J., Leary, C., Maclaurin, D., and Wanderman-
+   Milne, S. JAX: composable transformations of Python+NumPy programs, 2018. URL http:
+  //github.com/google/jax.
+Chang, B., Meng, L., Haber, E., Tung, F., and Begert, D. Multi-level residual networks from
+   dynamical systems view. arXiv preprint arXiv:1710.10348, 2017.
+Chen, T. Q., Rubanova, Y., Bettencourt, J., and Duvenaud, D. K. Neural ordinary differential
+   equations. In Advances in neural information processing systems, pp. 6571–6583, 2018.
+De Brouwer, E., Simm, J., Arany, A., and Moreau, Y. GRU-ODE-Bayes: Continuous modeling of
+   sporadically-observed time series. In Advances in Neural Information Processing Systems, pp.
+  7377–7388, 2019.
+Dormand, J. R. and Prince, P. J. A family of embedded Runge-Kutta formulae. Journal of computa-
+   tional and applied mathematics, 6(1):19–26, 1980.
+Drucker, H. and LeCun, Y. Improving generalization performance using double backpropagation.
+  IEEE Trans. Neural Networks, 3(6):991–997, 1992. doi: 10.1109/72.165600. URL https:
+  //doi.org/10.1109/72.165600.
+Dupont, E., Doucet, A., and Teh, Y. W. Augmented neural ODEs. In Advances in Neural Information
+  Processing Systems, pp. 3134–3144, 2019.
+Finlay, C., Jacobsen, J.-H., Nurbekyan, L., and Oberman, A. M. How to train your neural ODE.
+   arXiv preprint arXiv:2002.02798, 2020.
+Grathwohl, W., Chen, R. T. Q., Bettencourt, J., Sutskever, I., and Duvenaud, D. FFJORD: Free-form
+   continuous dynamics for scalable reversible generative models. International Conference on
+  Learning Representations, 2019.
+Griewank, A. and Walther, A. Evaluating derivatives. 2008.
+Hairer, E., Norsett, S., and Wanner, G. Solving Ordinary Differential Equations I: Nonstiff Problems,
+  volume 8. 01 1993. doi: 10.1007/978-3-540-78862-1.
+Kutta, W. Beitrag zur näherungsweisen Integration totaler Differentialgleichungen. Zeitschrift für
+  Mathematik und Physik, 46:435–453, 1901.
+LeCun, Y., Cortes, C., and Burges, C. MNIST handwritten digit database. ATT Labs [Online].
+  Available: http://yann.lecun.com/exdb/mnist, 2, 2010.
+Li, X., Chen, R. T. Q., Wong, T.-K. L., and Duvenaud, D. Scalable gradients for stochastic differential
+   equations. In Artificial Intelligence and Statistics, 2020.
+Novak, R., Bahri, Y., Abolafia, D. A., Pennington, J., and Sohl-Dickstein, J. Sensitivity and
+   generalization in neural networks: an empirical study. In 6th International Conference on Learning
+  Representations, ICLR 2018, Vancouver, BC, Canada, April 30 - May 3, 2018, Conference Track
+  Proceedings. OpenReview.net, 2018. URL https://openreview.net/forum?id=HJC2SzZCW.
+Papamakarios, G., Pavlakou, T., and Murray, I. Masked autoregressive flow for density estimation.
+  Advances in Neural Information Processing Systems, 2017.
+Pinckaers, H. and Litjens, G. Neural ordinary differential equations for semantic segmentation of
+   individual colon glands. arXiv preprint arXiv:1910.10470, 2019.
+                                                    9
+Rackauckas, C., Innes, M., Ma, Y., Bettencourt, J., White, L., and Dixit, V. Diffeqflux.jl-a Julia
+   library for neural differential equations. arXiv preprint arXiv:1902.02376, 2019.
+Rubanova, Y., Chen, T. Q., and Duvenaud, D. K. Latent ordinary differential equations for irregularly-
+   sampled time series. In Advances in Neural Information Processing Systems, pp. 5321–5331,
+   2019.
+Runge, C. Über die numerische Auflösung von Differentialgleichungen. Mathematische Annalen, 46:
+  167–178, 1895.
+Ruthotto, L. and Haber, E. Deep neural networks motivated by partial differential equations. Journal
+   of Mathematical Imaging and Vision, pp. 1–13, 2018.
+Ruthotto, L., Osher, S. J., Li, W., Nurbekyan, L., and Fung, S. W. A machine learning framework for
+   solving high-dimensional mean field game and mean field control problems. CoRR, abs/1912.01825,
+   2019. URL http://arxiv.org/abs/1912.01825.
+Scao, T. L. Neural differential equations for single image super-resolution. arXiv preprint
+   arXiv:2005.00865, 2020.
+Shampine, L. F. Some practical Runge-Kutta formulas. Mathematics of Computation, 46(173):
+  135–150, 1986. ISSN 00255718, 10886842. URL http://www.jstor.org/stable/2008219.
+Silva, I., Moody, G., Scott, D. J., Celi, L. A., and Mark, R. G. Predicting in-hospital mortality of
+   ICU patients: The physionet/computing in cardiology challenge 2012. In 2012 Computing in
+  Cardiology, pp. 245–248, 2012.
+Simard, P., Raysz, J. P., and Victorri, B. Shaping the state space landscape in recurrent networks. In
+  Advances in neural information processing systems, pp. 105–112, 1991.
+Wang, W., Axelrod, S., and Gómez-Bombarelli, R. Differentiable molecular simulations for control
+   and learning. arXiv preprint arXiv:2003.00868, 2020.
+
+                  Appendix A            Taylor-mode Automatic Differentiation
+
+                              A.1    Taylor Polynomials
+
+To clarify the relationship between the presentation in Chapter 13 of Griewank & Walther (2008) and
+our results we give the distinction between the Taylor coefficients and derivative coefficients, also
+known, unhelpfully, as Tensor coefficients.
+
+For a sufficiently smooth vector valued function f : Rn → Rm and the polynomial
+
+                          x(t) = x[0] + x[1] t + x[2] t2 + x[3] t3 + · · · + x[d] td ∈ Rn                                 (5)
+
+we are interested in the d-truncated Taylor expansion
+
+                          y(t) = f (x(t)) + O(td+1 )                                                                      (6)
+ 
+                               
+                               ≡ y[0] + y[1] t + y[2] t + y[3] t + · · · + y[d] t ∈ R                                     (7)
+
+with the notation that <<FORMULA>> is the Taylor coefficient, which is the normalized derivative coefficient.
+
+The Taylor coefficients of the expansion, y[j] , are smooth functions of the i ≤ j coefficients x[i],
+
+                                       <<FORMULA>>                                                                        (8)
+
+                                       <<FORMULA>>                                                                        (9)
+
+                                       <<FORMULA>>                                                                       (10)
+
+                                       <<FORMULA>>                                                                       (11)
+
+These, as given in Griewank & Walther (2008), are written in terms of the normalized, Taylor
+coefficients. This obscures their direct relationship with the derivatives, which we make explicit.
+Consider the polynomial eq. (5) with Taylor coefficients expanded so their normalization is clear.
+Further, let’s use suggestive notation that these coefficients correspond to the higher derivatives of 
+x with respect to t, making x(t) a Taylor polynomial. That is <<FORMULA>>.
+                                       <<FORMULA>>                                                                       (12)
+
+                                       <<FORMULA>>                                                                       (13)
+
+                                       <<FORMULA>>                                                                       (14)
+
+Again, we are interested in the polynomial eq. (7), but with the normalization terms explicit
+
+                                       <<FORMULA>>                                                                       (15)
+
+Now we can expand the expressions for the Taylor coefficients y[i] to expressions for derivative
+coefficients yi = i!y[i].
+
+The coefficients of the Taylor expansion, yj , are smooth functions of the i ≤ j coefficients xi,
+
+                                       <<FORMULA>>                                                                       (16)
+
+                                       <<FORMULA>>                                                                       (17)
+
+                                       <<FORMULA>>                                                                       (18)
+
+                                       <<FORMULA>>                                                                       (19)
+
+                                       <<FORMULA>>                                                                       (20)
+
+                                       <<FORMULA>>                                                                       (21)
+
+Therefore, eqs. (16), (17), (19) and (21) show that the derivative coefficient yi are exactly the ith
+order higher derivatives of the composition f (x(t)) with respect to t. The key insight to this exercise
+is that by writing the derivative coefficients explicitly we reveal that the expressions for the terms,
+eqs. (16) to (18) and (20), involve terms previously computed for lower order terms.
+In general, it will be useful to consider that the yk derivative coefficients is a function of all lower
+order input derivatives
+
+                                             yk = yk (x0 , . . . , xk ).                                  (22)
+
+We provide the API to compute this in JAX by indexing the k-output of jet
+
+                                      yk = jet(f, x0 , (x1 , . . . , xk ))[k].
+
+                  A.2    Relationship with Differential Equations
+
+                           A.2.1    Autonomous Form
+
+We can transform the initial value problem
+
+                                     <<FORMULA>>                                (23)
+
+into an autonomous dynamical system by augmenting the system to include the independent variable
+with trivial dynamics Hairer et al. (1993):
+
+                               <<FORMULA>>                              (24)
+
+We do this for notational convenience, as well it disambiguates that derivatives with respect to t are 
+meant in the “total" sense. This is aleviates the potential ambiguity of ∂t f (x(t), t) which could mean
+both the derivative with respect to the second argument and the derivative through x(t) by the chain
+rule <<FORMULA>>.
+
+            A.2.2    Taylor Coefficients for ODE Solution with jet
+
+Recall that jet gives us the coefficients for yi as a function of f and the coefficients xj≤i . We
+can use jet and the relationship xk+1 = yk to recursively compute the coefficients of the solution
+polynomial.
+
+                     Algorithm 1 Taylor Coefficients for ODE Solution by Recursive Jet
+                                    <<ALGORITHM>>
+
+                        A.3    Regularizing Taylor Terms
+
+Computing the Taylor coefficients for the ODE solution as in algorithm 1 will give a local approx-
+imation to the ODE solution. If infinitely many Taylor coefficients could be computed this would
+give the exact solution. The order of the final Taylor coefficient, determining the truncation of the
+polynomial, gives the order of the approximation.
+If the higher order Taylor coefficients of the solution are large, then truncation will result in a local
+approximation that quickly diverts from the solution. However, if the higher Taylor coefficients are
+small then the local approximation will remain close to the solution. This motivates our regularization
+method. The effect of our regularizer on the Taylor expansion of a solution to a neural ODE can be
+seen in fig. 9.
+
+                  Appendix B         Experimental Details
+
+Experiments were conducted using GPU-based ODE solvers. Training gradients were computed
+using the adjoint method, in which the trajectory is reconstructed backwards in time to save memory,
+for backpropagation. As in Finlay et al. (2020), we normalize our regularization term in eq. (1) by
+the dimension of the vector-valued trajectory z(t) so that we may choose λ free of scaling by the
+dimension of the problem.
+
+               B.1    Efficient computation of the gradient of regularization term
+
+To optimize our regularized objective, we must compute its gradient. We use the adjoint method
+as described in Chen et al. (2018) to differentiate through the solution to the ODE. In particular, to
+optimize our model we only need to compute the gradient of the regularization term. The adjoint
+method gives the gradient of the ODE solution as a solution to an augmented ODE.
+
+                               <<FIGURE>>
+Figure 9: Left: The dynamics and a trajectory of a neural ODE trained on a toy supervised learning
+problem. The dynamics are poorly approximated by a 6th-order local Taylor series, and requires 92
+NFE by a solve by a 5th-order Runge-Kutta solver. Right: Regularizing the 6th-order derivatives of
+trajectories gives dynamics that are easier to solve numerically, requiring only 68 NFE.
+
+                     B.2   Supervised Learning
+
+The dynamics function f : Rd × R → Rd is given by an MLP as follows
+
+                                            z1 = σ(x)
+                                        h1 = W1 [z1 ; t] + b1
+                                            z2 = σ(h1 )
+                                        y = W2 [z2 ; t] + b2
+
+Where [·; ·] denotes concatenation of a scalar onto a column vector. The parameters are W1 ∈
+Rh×d , b1 ∈ Rh and W2 ∈ Rd×h , b2 ∈ Rd . Here we use 100 hidden units, i.e. h = 100. We have
+d = 784, the dimension of an MNIST image.
+We train with a batch size of 100 for 160 epochs. We use the standard training set of 60,000 images,
+and the standard test set of 10,000 images as a validation/test set. We optimize our model using SGD
+with momentum with β = 0.9. Our learning rate schedule is 1e-1 for the first 60 epochs, 1e-2 until
+epoch 100, 1e-3 until epoch 140, and 1e-4 for the final 20 epochs.
+B.3   Continuous Generative Modelling of Time-Series
+The PhysioNet dataset consists of observations of 41 distinct traits over a time period of 48 hours.
+We remove the parameters “Age”, “Gender”, “Height”, and “ICUType” as these attributes do not vary
+in time. We also quantize the measurements for each attribute by the hour by averaging multiple
+measurements within the same hour. This leaves 49 unique time stamps (the extra time stamp for
+observations at exactly the endpoint of the 48 hour observation period). We report all our losses on
+this quantized data. We performed this rather coarse quantization for computational reasons having
+to do with our particular implementation of this model. The validation split was obtained by taking
+a random split of 20% of the trajectories from the full dataset. In total there are 8000 trajectories.
+Code is included for processing the dataset, and links to downloading the data may be found in the
+code for Rubanova et al. (2019). All other experimental details may be found in the main body and
+appendices of Rubanova et al. (2019).
+
+                     B.4   Continuous Normalizing Flows
+
+For the model trained on the MINIBOONE tabular dataset from Papamakarios et al. (2017), we used
+the same architecture as in Table 4 in the appendix of Grathwohl et al. (2019). We chose the number
+of epochs and a learning rate schedule based on manual tuning on the validation set, in contrast
+to Grathwohl et al. (2019) who tuned these automatically using early stopping and an automatic
+heuristic for the learning rate decay using evaluation on a validation set. In particular, we trained for
+500 epochs with a learning rate of 1e-3 for the first 300 epochs, 1e-4 until epoch 425, and 1e-5
+for the remaining 75 epochs. The number of epochs and learning rate schedule was determined by
+evaluating the model on the validation set every 10 epochs, and decaying the learning rate by a factor
+of 10 once the loss on the validation set stopped improving for several evaluations, with the goal of
+matching or improving upon the log-likelihood reported in Grathwohl et al. (2019). The data was
+obtained as made available from Papamakarios et al. (2017), which was already processed and split
+into train/validation/test. In particular, the training set has 29556 examples, the validation set has
+3284 examples, and the test set has 3648 examples, which consist of 43 features.
+It is important to note that we implemented a single-flow model for the MNIST dataset, while the
+original comparison in Finlay et al. (2020) was on a multi-flow model. This accounts for discrepancy
+in bits/dim and NFE reported in Finlay et al. (2020).
+All other experimental details are as in Grathwohl et al. (2019).
+
+                              B.5   Hardware
+
+MNIST Supervised learning, Physionet Time-series, and MNIST FFJORD experiments were trained
+and evaluated on NVIDIA Tesla P100 GPU. Tabular data FFJORD experiments were evaluated on
+NVIDIA Tesla P100 GPU but trained on NVIDIA Tesla T4 GPU. All experiments except for MNIST
+FFJORD were trained with double precision for purposes of reproducibility.
+
+                     Appendix C         Additional Results
+
+                               C.1   Overfitting of NFE
+
+
+                                    <<FIGURE>>
+                Figure 10: The difference in NFE is tracked by the variance of NFE.
+
+In fig. 10 we note that there is a striking correspondence in the variance of NFE across individual
+examples (in both the train set (dark red) and test set (light red)) and the absolute difference in NFE
+between examples in the training set and test set. This suggests that any difference in the average
+NFE between training examples and test examples is explained by noise in the estimate of the true
+average NFE. It is also interesting that speed regularization does not have a monotonic relationship
+with the variance of NFE, and we speculate as to how this might interact between the correspondence
+of NFE for a particular example and the difficulty in the model correctly classifying it.
+
+                     C.2         Trading off function evaluations with a surrogate loss
+
+In fig. 11 and fig. 12 we confirm that our method poses a suitable tradeoff not only on the loss being
+optimized, but also on the potentially non-differentiable loss which we truly care about. On MNIST,
+we get a similar pareto curve when plotting classification error as opposed to cross-entropy loss, and
+similarly on the time-series modelling task we see that we get a similar pareto curve on MSE loss as
+compared to IWAE loss. The pareto curves are plotted for R3 , R2 respectively.
+
+                                                   <<FIGURE>>
+                                         Figure 11: MNIST Classification                                                                                                 
+                                         
+                                                   <<FIGURE>>
+                                         Figure 12: Physionet Time-Series
+
+                                    C.3         Wall-clock Time
+
+We include additional tables with wall-clock time and training with fixed grid solvers in table 3 and
+table 4.
+
+
+                           Appendix D          Comparison to How to Train Your Neural ODE
+
+The terms from Finlay et al. (2020) are
+
+                                    <<FORMULA>>
+
+and an estimate of
+                                    <<FORMULA>>
+
+                       Table 3: Classification on MNIST
+                                    <<TABLE>>
+
+These are combined with a weighted average and integrated along the solution trajectory.
+These terms are motivated by the expansion
+
+                                    <<FORMULA>>
+
+Namely, eq. (3) regularizes the first total derivative of the solution, f (z(t), t), along the trajectory, and
+eq. (4) regularizes a stochastic estimate of the Frobenius norm of the spatial derivative, ∇z f (z(t), t),
+along the solution trajectory.
+In contrast, R2 regularizes the norm of the second total derivative directly. In particular, this takes
+into account the ∂f ∂t term. In other words, this accounts for the explicit dependence of f on time,
+while eq. (3) and eq. (4) capture only the implicit dependence on time through z(t).
+Even in the case of an autonomous system, that is, where ∂f    ∂t is identically 0 and the dynamics f only
+depend implicitly on time, these terms still differ. Namely, R2 integrates the following along the
+solution trajectory:
+
+                                       <<FORMULA>>
+
+while Finlay et al. (2020) penalizes the respective norms of the matrix ∇z f (z(t), t) and vector
+f (z(t), t) separately.
+
+                     Table 4: Density Estimation on Tabular Data (MINIBOONE)
+                                       <<TABLE>>
+
+
+          How to Train Your Neural ODE: the World of Jacobian and Kinetic Regularization
+
+                Chris Finlay 1 Jörn-Henrik Jacobsen 2 Levon Nurbekyan 3 Adam M Oberman 1
+                                                                                                                        
+                    Abstract
+
+         Training neural ODEs on large datasets has not
+         been tractable due to the necessity of allowing
+         the adaptive numerical ODE solver to refine its
+         step size to very small values. In practice this
+         leads to dynamics equivalent to many hundreds
+         or even thousands of layers. In this paper, we
+         overcome this apparent difficulty by introducing
+         a theoretically-grounded combination of both op-
+         timal transport and stability regularizations which
+         encourage neural ODEs to prefer simpler dynam-
+         ics out of all the dynamics that solve a problem
+         well. Simpler dynamics lead to faster conver-
+         gence and to fewer discretizations of the solver,
+         considerably decreasing wall-clock time without
+         loss in performance. Our approach allows us to
+         train neural ODE-based generative models to the
+         same performance as the unregularized dynamics,                 
+         with significant reductions in training time. This
+         brings neural ODEs closer to practical relevance             
+         in large-scale applications.
+
+                                       <<FIGURE>>                                   
+                        Figure 1. Optimal transport map and a generic normalizing flow.
+
+                                                                      Indeed, it was observed that there is a striking similarity
+ 1. Introduction                                                      between ResNets and the numerical solution of ordinary
+                                                                        differential equations (E, 2017; Haber & Ruthotto, 2017;
+Recent research has bridged dynamical systems, a                     Ruthotto & Haber, 2018; Chen et al., 2018; 2019). In these
+workhorse of mathematical modeling, with neural networks,            works, deep networks are interepreted as discretizations of
+the defacto function approximator for high dimensional data.         an underlying dynamical system, where time indexes the
+The great promise of this pairing is that the vast mathemat-         “depth” of the network and the parameters of the discretized
+ical machinery stemming from dynamical systems can be                dynamics are learned. An alternate viewpoint was taken by
+leveraged for modelling high dimensional problems in a               neural ODEs (Chen et al., 2018), where the dynamics of
+dimension-independent fashion.                                       the neural network are approximated by an adaptive ODE
+Connections between neural networks and ordinary differ-             solver on the fly. This latter approach is quite compelling
+ential equations (ODEs) were almost immediately noted                as it does not require specifying the number of layers of the
+after residual networks (He et al., 2016) were first proposed.       network beforehand. Furthermore, it allows the learning of
+                                                                     homeomorphisms without any structural constraints on the
+                                                                     function computed by the residual block.
+                                                                     Neural ODEs have shown great promise in the physical sciences 
+                                                                     (Köhler et al., 2019), in modeling irregular time series
+                                                                     (Rubanova et al., 2019), mean field games (Ruthotto et al.,
+                                                                     2019), continuous-time modeling (Yildiz et al., 2019; Kanaa
+                                                                     et al., 2019), and for generative modeling through normaliz-
+                                                                     ing flows with free-form Jacobians (Grathwohl et al., 2019).
+
+
+Recent work has even adapted neural ODEs to the stochas-        based on (ODE) which abstain from a priori fixing step-size.
+tic setting (Li et al., 2020). Despite these successes, some    Chen et al.’s method is a continuous-time generalization of
+hurdles still remain. In particular, although neural ODEs are   residual networks, where the dynamics are generated by an
+memory efficient, they can take a prohibitively long time to    adaptive ODE solver that chooses step-size on-the-fly.
+train, which is arguably one of the main stumbling blocks
+                                                                Because of their adaptive nature, neural ODEs can be more
+towards their widespread adoption.
+                                                                flexible than ResNets in certain scenarios, such as when
+In this work we reduce the training time of neural ODEs         trading between model speed and accuracy. Moreover given
+by regularizing the learned dynamics, complementing other       a fixed network depth, the memory footprint of neural ODEs
+recent approaches to this end such as augmented neural          is orders of magnitude smaller than a standard ResNet dur-
+ODEs (Dupont et al., 2019). Without further constraints on      ing training. They therefore show great potential on a host
+their dynamics, high dimensional neural ODEs may learn          of applications, including generative modeling and density
+dynamics which minimize an objective function, but which        estimation. An apparent drawback of neural ODEs is their
+generate irregular solution trajectories. See for example       long training time: although a learned function f (· ; θ) may
+Figure 1b, where an unregularized flow exhibits undesirable     generate a map that solves a problem particularly well, the
+properties due to unnecessarily fluctuating dynamics. As        computational cost of numerically integrating (ODE) may
+a solution, we propose two theoretically motivated regular-     be so prohibitive that it is not tractable in practice. In this
+ization terms arising from an optimal transport viewpoint       paper we demonstrate this need not be so: with proper reg-
+of the learned map, which encourage well-behaved dynam-         ularization, it is possible to learn f (· ; θ) so that (ODE) is
+ics (see 1a left). We empirically demonstrate that proper       easily and quickly solved.
+regularization leads to significant speed-up in training time
+without loss in performance, thus bringing neural ODEs          2.1. FFJORD
+closer to deployment on large-scale datasets. Our methods
+are validated on the problem of generative modelling and        In density estimation and generative modeling, we wish
+density estimation, as an example of where neural ODEs          to estimate an unknown data distribution p(x) from which
+have shown impressive results, but could easily be applied      we have drawn N samples. Maximum likelihood seeks to
+elsewhere.                                                      approximate p(x) with a parameterized distribution pθ (x)
+                                                                by minimizing the Kullback-Leibler divergence between the
+In summary, our proposed regularized neural ODE (RN-            two, or equivalently minimizing
+ODE) achieves the same performance as the baseline, while
+reducing the wall-clock training time by many hours or even                                    
+days.                                                                               <<FORMULA>>              (1)
+                                                                                             
+2. Neural ODEs & Continuous normalizing                         Continuous normalizing flows (Grathwohl et al., 2019; Chen
+    flows                                                       et al., 2018) parameterize pθ (x) using a vector field f :
+                                                                Rd × R 7→ Rd as follows. Let z(x, T ) be the solution map
+Neural ODEs simplify the design of deep neural networks         given by running the dynamics (ODE) for fixed time T .
+by formulating the forward pass of a deep network as the        Suppose we are given a known distribution q at final time T ,
+solution of a ordinary differential equation. Initial work      such as the normal distribution. Change of variables tells us
+along these lines was motivated by the similarity of the eval-  that the distribution pθ (x) may be evaluated through
+uation of one layer of a ResNet and the Euler discretization
+of an ODE. Suppose the block in the t-th layer of a ResNet          log pθ (x) = log q (z(x, T )) + log det | ∇ z(x, T )|          (2)
+is given by the function f (x, t; θ), where θ are the block’s
+parameters. Then the evaluation of this layer of the ResNet     Evaluating the log determinant of the Jacobian is difficult.
+is simply xt+1 = xt + f (xt , t; θ). Now, instead consider      Grathwohl et al. (2019) exploit the following identity from
+the following ODE                                               fluid mechanics (Villani, 2003, p 114)
+
+                <<FORMULA>>                        (ODE)                   log det | ∇ z(x, t)| = div (f ) (z(x, t), t))       (3)
+
+The Euler discretization of this ODE with step-size τ is        where div (·) is the divergence operator, div (f ) (x) =
+zt+1 = zt + τ f (zt , t; θ), which is nearly identical to the      i ∂xi fi (x). By the fundamental theorem of calculus, we
+forward evaluation of the ResNet’s layer (setting step-size          1
+                                                                       In the normalizing flow literature divergence is typically writ-
+τ = 1 gives equality). Armed with this insight, Chen et al.     ten explicitly as the trace of the Jacobian, however we use div (·)
+(2018) suggested a method for training neural networks          which is more common elsewhere.
+
+                                                         <<FIGURE>>
+Figure 2. Log-likelihood (measured in bits/dim) on the validation set as a function of wall-clock time. Rolling average of three hours, with
+90% confidence intervals.
+
+may then rewrite (2) in integral form                                    From this simple motivating example, the need for regular-
+                                                                         ity of the vector field is apparent. Without placing demands
+                                   Z  T
+                                                                         on the vector field f , it is entirely possible that the learned
+ log pθ (x) = log q (z(x, T )) +         div (f ) (z(x, s), s) ds
+                                    0
+                                                                         dynamics will be poorly conditioned. This is not just a theo-
+                                                               (4)       retical exercise: because the dynamics must be solved with
+Remark 2.1 (Divergence trace estimate). In (Grathwohl                    a numerical integrator, poorly conditioned dynamics will
+et al., 2019), the divergence is estimated using an unbiased             lead to difficulties during numerical integration of (ODE).
+Monte-Carlo trace estimate (Hutchinson, 1990; Avron &                    Indeed, later we present results demonstrating a clear corre-
+Toledo, 2011),                                                           lation between the number of time steps an adaptive solver
+                                                                         takes to solve (ODE), and the regularity of f .
+                                       T            
+             div (f ) (x) =     E        ∇ f (x)             (5)       How can the regularity of the vector field be measured? One
+                            ∼N (0,1)
+                                                                         motivating approach is to measure the force experienced by
+                                                                         a particle z(t) under the dynamics generated by the vector
+By using the substitution (4), the task of maximizing log-               field f , which is given by the total derivative of f with
+likelihood shifts from choosing pθ to minimize (1), to learn-            respect to time
+ing the flow generated by a vector field f . This results in a
+normalizing flow with a free-form Jacobian and reversible                           df (z, t)                      ∂f (z, t)
+dynamics, and was named FFJORD by Grathwohl et al..                                           = ∇ f (z, t) · ż +                        (6)
+                                                                                       dt                             ∂t
+                                                                                                                        ∂f (z, t)
+2.2. The need for regularity                                                                  = ∇ f (z, t) · f (z, t) +                  (7)
+                                                                                                                            ∂t
+The vector field learned through FFJORD that maximizes                  Well conditioned flows will place constant, or nearly con-
+the log-likelihood is not unique, and raises troubling prob-             stant, force on particles as they travel. Thus, in this work we
+lems related to the regularity of the flow. For a simple                 propose regularizing the dynamics with two penalty terms,
+example, refer to Figure 1, where we plot two normaliz-                  one term regularizing f and the other ∇ f . The first penalty,
+ing flows, both mapping a toy one-dimensional distribution               presented in Section 3, is a measure of the distance travelled
+to the unit Gaussian, and where both maximize the log-                   under the flow f , and can alternately be interpreted as the
+likelihood of exactly the same sample of particles. Figure               kinetic energy of the flow. This penalty term is based off
+1a presents a “regular” flow, where particles travel in straight         of numerical methods in optimal transport, and encourages
+lines that travel with constant speed. In contrast, Figure 1b            particles to travel in straight lines with constant speed. The
+shows a flow that still maximizes the log-likelihood, but                second penalty term, discussed in Section 4, performs regu-
+that has undesirable properties, such as rapidly varying local           larization on the Jacobian of the vector field. Taken together
+trajectories and non-constant speed.                                     the two terms ensure that the force experienced by a particle
+
+under the flow is constant or nearly so.                         3.1. Linking normalizing flows to optimal transport
+
+These two regularizers will promote dynamics that follow         Now suppose we wish to minimize (18a), with q(z) a unit
+numerically easy-to-integrate paths, thus greatly speeding       normal distribution, and p(x) a data distribution, unknown
+up training time.                                                to us, but from which we have drawn N samples, and which
+                                                                 we model as a discrete distribution of Dirac masses. Enforc-
+3. Optimal transport maps &                                      ing the initial condition is trivial because we have sampled
+                                                                 from p directly. The continuity equation (18b) need not be
+   Benamou-Brenier
+                                                                 enforced because we are tracking a finite number of sam-
+There is a remarkable similarity between density estimation      pled particles. However the final time condition ρT = q
+using continuous time normalizing flows, and the calcula-        cannot be implemented directly, since we do not have di-
+tion of the optimal transport map between two densities          rect control on the form ρT (z) takes. Instead, introduce
+using the Benamou-Brenier formulation (Benamou & Bre-            a Kullback-Leibler term to (18a) penalizing discrepancy
+nier, 2000; Santambrogio, 2015). While a review of optimal       between ρT and q. This penalty term has an elegant simpli-
+transport theory is far outside the scope of this paper, here    fication when p(x) is modeled as a distribution of a finite
+we provide an informal summary of key ideas relevant to          number of masses, as is done in generative modeling. Set-
+continuous normalizing flows. The quadratic-cost optimal         ting ρ0 = pθ a brief derivation yields
+transport map between two densities p(x) and q(x) is a map       
+z : Rd 7→ Rd minimizing the transport cost                       
+                                                                                <<FORMULA>>                 (10)
+
+              <<FORMULA>>                  (8)
+                                                                 With this simplification (18a) becomes
+
+subject to the constraint that A q(z) dz = z−1 (A) p(x) dx, 
+in other words that the measure of any set A is preserved                      
+under the map z. In a seminal work, Benamou & Brenier                            <<FORMULA>>                (11)
+(2000) showed that rather than solving for minimizers of (8)
+directly, an indirect (but computationally efficient) method
+is available by writing z(x, T ) as the solution map of a
+flow under a vector field f (as in (ODE)) for time T , by        For further details on this derivation consult the supplemen-
+minimizing                                                       tary materials.
+                                                                 The connection between the Benamou-Brenier formulation
+                      <<FORMULA>>                          (9a)   of the optimal transport problem on a discrete set of points
+                                                                 and continuous normalizing flows is apparent: the optimal
+                                                                 transport problem (11) is a regularized form of the continu-
+                      <<FORMULA>>                          (9b)  ous normalizing flow optimization problem (1). We there-
+                      ρ0 (x) = p,                          (9c)  fore expect that adding a kinetic energy regularization term
+                      ρT (z) = q.                          (9d)  to FFJORD will encourage solution trajectories to prefer
+                                                                 straight lines with constant speed.
+ The objective function (18a) is a measure of the kinetic
+energy of the flow. The constraint (18b) ensures probability
+mass is conserved. The latter two constraints guarantee the      4. Unbiased Frobenius norm regularization of
+learned distribution agrees with the source p and target q.          the Jacobian
+Note that the kinetic energy (18a) is an upper bound on the
+                                                                 Refering to equation (7), one can see that even if f is regu-
+transport cost, with equality only at optimality.
+                                                                 larized to be small, via a kinetic energy penalty term, if the
+The optimal flow f minimizing (18) has several particularly      Jacobian is large then the force experienced by a particle
+appealing properties. First, particles induced by the opti-      may also still be large. As a result, the error of the numerical
+mal flow f travel in straight lines. Second, particles travel    integrator can be large, which may lead an adaptive solver
+with constant speed. Moreover, under suitable conditions         to make many function evaluations. This relationship is
+on the source and target distributions, the optimal solution     apparent in Figure 3, where we empirically demonstrate the
+map is unique (Villani, 2008). Therefore the solution map        correlation between the number of function evaluations of
+z(x, t) is entirely characterized by the initial and final posi- f taken by the adaptive solver, and the size of the Jacobian
+tions: z(x, t) = (1 − Tt )z(x, 0) + Tt z(x, T ). Consequently,   norm of f . The correlation is remarkably strong: dynamics
+given an optimal f it is extraordinarily easy to solve (ODE)     governed by a poorly conditioned Jacobian matrix require
+numerically with minimal computational effort.                   the adaptive solver to take many small time steps.
+
+
+Algorithm 1 RNODE: regularized neural ODE training of
+FFJORD
+         <<ALGORITHM>>
+
+                                                                                 <<FIGURE>>
+                                                                 Figure 3. Number of function evaluations vs Jacobian Frobenius
+                                                                norm of flows on CIFAR10 during training with vanilla FFJORD,
+                                                                 using an adaptive ODE solver.
+\
+                                                                 Avron & Toledo, 2011). For real matrix B, an unbiased
+                     <<FORMULA>>                                 estimate of the trace is given by
+
+                                                                                    <<FORMULA>>                 (14)
+
+                                                                 where <<FORMULA>> is drawn from a unit normal distribution. 
+                                                                 Thus the squared Frobenius norm can be easily estimated by 
+                                                                 setting B = AAT.
+Moreover, in particle-based methods, the kinetic energy          Turning to the Jacobian <<FORMULA>> of a vector valued func-
+term forces dynamics to travel in straight lines only on         tion f : Rd 7→ Rd , recall that the vector-Jacobian product
+data seen during training, and so the regularity of the map      <<FORMULA>> may be quickly computed through reverse-mode
+is only guaranteed on trajectories taken by training data.       automatic differentiation. Therefore an unbiased Monte-
+The issue here is one of generalization: the map may be          Carlo estimate of the Frobenius norm of the Jacobian is
+irregular on off-distribution or perturbed images, and cannot    readily available
+be remedied by the kinetic energy term during training alone.
+In the context of generalization, Jacobian regularization is                    <<FORMULA>>                         (15)
+analagous to gradient regularization, which has been shown       
+to improve generalization (Drucker & LeCun, 1992; Novak                         <<FORMULA>>                         (16)
+et al., 2018).
+
+For these reasons, we also propose regularizing the Jacobian     Conveniently, in the FFJORD framework the quantity
+through its Frobenius norm. The Frobenius norm k · kF of a       <<FORMULA>> must be computed during the estimate of the prob-
+real matrix A can be thought of as the `2 norm of the matrix     ability distribution under the flow, in the Monte-Carlo esti-
+A vectorized                                                     mate of the divergence term (5). Thus Jacobian Frobenius
+                      kAkF =               a2ij           (12)   norm regularization is available with essentially no extra
+                                                                 computational cost.
+Equivalently it may be computed as
+                                                                 5. Algorithm description
+                               
+                     kAkF = tr(AAT )                      (13)   All together, we propose modifying the objective function
+                                                                 of the FFJORD continuous normalizing flow (Grathwohl
+and is the Euclidean norm of the singular values of a matrix.    et al., 2019) with the two regularization penalties of Sec-
+In trace form, the Frobenius norm lends itself to estimation     tions 3 & 4. The proposed method is called RNODE, short
+using a Monte-Carlo trace estimator (Hutchinson, 1990;           for regularized neural ODE. Pseudo-code of the method is
+
+                                                         <<TABLE>>
+Table 1. Log-likelihood (in bits/dim) and training time (in hours) on validation images with uniform dequantization. Results on clean
+images are found in the supplemental materials. For comparison we report both the results of the original FFJORD paper (Grathwohl
+et al., 2019) and our own independent run of FFJORD (“vanilla”) on CIFAR10 and MNIST. Vanilla FFJORD did not train on ImageNet64
+(denoted by “x”). Also reported are results for other flow-based generative modeling papers. Our method (FFJORD with RNODE) has
+comparable log-likelihood as FFJORD but is significantly faster.
+   
+
+                                                              <<FIGURE>>
+Figure 4. Quality of generated samples samples on 5bit CelebA-HQ64 with RNODE. Here temperature annealing (Kingma & Dhariwal,
+2018) with T = 0.7 was used to generate visually appealing images. For full sized CelebA-HQ256 samples, consult the supplementary
+materials.
+
+presented in Algorithm 1. The optimization problem to be                   Here E, l, and n are respectively the kinetic energy, the
+solved is                                                                  log determinant of the Jacobian, and the integral of the
+                                                                           Frobenius norm of the Jacobian.
+                                                                           Both the divergence term and the Jacobian Frobenius norm
+                                                                           are approximated with Monte-Carlo trace estimates. In our
+                     <<FORMULA>>                                           implementation, the Jacobian Frobenius estamate reuses
+                                                                           the computatian T ∇ f from the divergence estimate for
+                                                                           efficiency. We remark that the kinetic energy term only
+                     <<FORMULA>>                                           requires the computation of a dot product. Thus just as
+                                                                           in FFJORD, our implementation scales linearly with the
+                     <<FORMULA>>             (17)                          number of time steps taken by the ODE solver.
+
+                                                                           Gradients of the objective function with respect to the net-
+where z(x, t) is determined by numerically solving (ODE).                  work parameters are computed using the adjoint sensitivity
+Note that we take the mean over number of samples and                      method (Pontryagin et al., 1962; Chen et al., 2018).
+input dimension. This is to ensure that the choice of regu-
+larization strength λK and λJ is independent of dimension
+size and sample size.                                                      6. Experimental design
+To compute the three integrals and the log-probability under               Here we demonstrate the benefits of regularizing neural
+q of z(x, T ) at final time T , we augment the dynamics of                 ODEs on generative models, an application where neu-
+the ODE with three extra terms, so that the entire system                  ral ODEs have shown strong empirical performance. We
+solved by the numerical integrator is                                      use four datasets: CIFAR10 (Krizhevsky & Hinton, 2009),
+                                                                           MNIST (LeCun & Cortes, 1998), downsampled ImageNet
+                                                                           (64x64) (van den Oord et al., 2016), and 5bit CelebA-HQ
+                                                                           (256x256) (Karras et al., 2017). We use an identical neural
+        <<FORMULA>>                                   (RNODE)              architecture to that of Grathwohl et al. (2019). The dynamics
+                                                                           (Kingma & Dhariwal, 2018) trained with 40 GPUs for a week;
+                                                                           in contrast we train with four GPUs in just under a week.
+     
+     
+
+                                                      <<FIGURE>>
+Figure 5. Ablation study of the effect of the two regularizers, comparing two measures of flow regularity during training with a fixed
+step-size ODE solver. Figure 5a: mean Jacobian Frobenius norm as a function of training epoch. Figure 5b: mean kinetic energy of the
+flow as a function of training epoch. Figure 5c: number of function evaluations.
+
+are defined by a neural network f (z, t; θ(t)) : Rd × R+ 7→            step size by a factor of two until the discrete dynamics were
+Rd where θ(t) is piecewise constant in time. On MNIST we               stable and achieved good performance. The Runge-Kutta
+use 10 pieces; CIFAR10 uses 14; downsampled ImageNet                   4(5) adaptive solver was used on the two larger datasets. We
+uses 18; and CelebA-HQ uses 26 pieces. Each piece is a                 have also observed that RNODE improves the training time
+4-layer deep convolutional network comprised of 3x3 ker-               of the adaptive solvers as well, requiring many fewer func-
+nels and softplus activation functions. Intermediary layers            tion evaluations; however in Python we have found that the
+have 64 hidden dimensions, and time t is concatenated to               fixed grid solver is typically quicker at a specified number
+the spatial input z. The integration time of each piece is             of function evaluations. At test time RNODE uses the same
+[0, 1]. Weight matrices are chosen to imitate the multi-scale          adaptive solver as FFJORD.
+architecture of Real NVP (Dinh et al., 2017), in that im-
+                                                                       We always initialize RNODE so that f (z, t) = 0; thus train-
+ages are ‘squeezed’ via a permutation to halve image height
+                                                                       ing begins with an initial identity map. This is done by zero-
+and width but quadruple the number of channels. Diver-
+                                                                       ing the parameters of the last layer in each piece (block),
+gence of f is estimated using the Gaussian Monte-Carlo
+                                                                       following Goyal et al. (2017). The identity map is an ap-
+trace estimator with one sample of fixed noise per solver
+                                                                       propriate choice because it has zero transport cost and zero
+time-step.
+                                                                       Frobenius norm. Moreover the identity map is trivially
+On MNIST and CIFAR10 we train with a batch size of                     solveable for any numerical solver, thus training begins
+200 and train for 100 epochs on a single GPU3 , using the              without any effort required on the solver’s behalf.
+Adam optimizer (Kingma & Ba, 2015) with a learning rate
+                                                                       On all datasets we set both the kinetic energy regularization
+of 1e−3. On the two larger datasets, we train with four
+                                                                       coefficient λK and the Jacobian norm coefficient λJ to 0.01.
+GPUs, using a per-GPU batch size of respectively 3 and 50
+for CelebA-HQ and ImageNet. Data is preprocessed by per-
+turbing with uniform noise followed by the logit transform.            7. Results
+The reference implementation of FFJORD solves the dy-                  A comparison of RNODE against FFJORD and other flow-
+namics using a Runge-Kutta 4(5) adaptive solver (Dormand               based generative models is presented in Table 1. We report
+& Prince, 1980) with error tolerances 1e−5 and initial step            both our running of “vanilla” FFJORD and the results as
+size 1e−2. We have found that using less accurate solvers              originally reported in (Grathwohl et al., 2019). We highlight
+on the reference implementation of FFJORD results in nu-               that RNODE runs roughly 2.8x faster than FFJORD on both
+merically unstable training dynamics. In contrast, a simple            datasets, while achieving or surpassing the performance of
+fixed-grid four stage Runge-Kutta solver suffices for RN-              FFJORD. This can further be seen in Figure 2 where we plot
+ODE during training on MNIST and CIFAR10, using a                      bits per dimension ( − d1 log2 p(x), a normalized measure
+step size of 0.25. The step size was determined based on               of log-likelihood) on the validation set as a function of
+a simple heuristic of starting with 0.5 and decreasing the             training epoch, for both datasets. Visual inspection of the
+    3
+                                                                       sample quality reveals no qualitative difference between
+      GeForce RTX 2080 Ti
+
+                                          <<FIGURE>>
+          Figure 6. Quality of generated samples samples with and without regularization on MNIST, left, and CIFAR10, right.
+
+regularized and unregularized approaches; refer to Figure 6.         encourages flows to travel a minimal distance. In addition,
+Generated images for downsampled ImageNet and CelebA-                we see that the Jacobian norm alone also has a beneficial
+HQ are deferred to the supplementary materials; we provide           effect on the distance particles travel. Overall, the results
+smaller generated images for networks trained on CelebA-             support our theoretical reasoning empirically.
+HQ 64x64 in Figure 4.
+Surprisingly, our run of “vanilla” FFJORD achieved slightly          8. Previous generative flows inspired by
+better performance than the results reported in (Grathwohl               optimal transport
+et al., 2019). We suspect the discrepancy in performance
+and run times between our implementation of FFJORD and               Zhang et al. (2018) define a neural ODE flow where the
+that of the original paper is due to batch size: Grathwohl           dynamics are given as the gradient of a scalar potential func-
+et al. use a batch size of 900 and train on six GPUs, whereas        tion. This interpretation has deep connections to optimal
+on MNIST and CIFAR10 we use a batch size of 200 and                  transport: the optimal transport map is the gradient of a
+train on a single GPU.                                               convex potential function. Yang & Karniadakis (2019) con-
+                                                                     tinue along these lines, and define an optimal transport again
+We were not able to train vanilla FFJORD on ImageNet64,              as a scalar potential gradient. Yang & Karniadakis (2019)
+due to numerical underflow in the adaptive solver’s time step.       enforce that the learned map is in fact an optimal trans-
+This issue cannot be remedied by increasing the solver’s             port map by penalizing their objective function with a term
+error tolerance, for this would bias the log-likelihood esti-        measuring violations of the continuity equation. Ruthotto
+mates on validation.                                                 et al. (2019) place generative flows within a broader context
+                                                                     of mean field games, and as an example consider a neural
+7.1. Ablation study on MNIST                                         ODE gradient potential flow solving the optimal transport
+                                                                     problem in up to 100 dimensions. We also note the recent
+In Figure 5, we compare the effect of each regularizer by
+                                                                     work of Twomey et al. (2019), who proposed regularizing
+itself on the training dynamics with the fixed grid ODE
+                                                                     neural ODEs with an Euler-step discretization of the kinetic
+solver on the MNIST dataset. Without any regularization at
+                                                                     energy term to enforce ‘straightness’, although connections
+all, training dynamics are numerically unstable and fail after
+                                                                     to optimal transport were not discussed.
+just under 50 epochs. This is precisely when the Jacobian
+norm grows large; refer to Figure 5a. Figure 5a demonstrates         When a flow is the gradient of a scalar potential, the change
+that each regularizer by itself is able to control the Jacobian      of variables formula (4) simplifies so that the divergence
+norm. The Jacobian regularizer is better suited to this task,        term is replaced by the Laplacian of the scalar potential.
+although it is interesting that the kinetic energy regularizer       Although mathematically parsimonious and theoretically
+also improves the Jacobian norm. Unsurprisingly Figure 5b            well-motivated, we chose not to implement our flow as the
+demonstrates the addition of the kinetic energy regularizer          gradient of a scalar potential function due to computational
+                       How to Train Your Neural ODE: the World of Jacobian and Kinetic Regularization
+constraints: such an implementation would require ‘triple       through CIFAR, and companies sponsoring the Vector Insti-
+backprop’ (twice to compute or approximate the Laplacian,       tute (www.vectorinstitute.ai/#partners).
+and once more for the parameter gradient). Ruthotto et al.
+(2019) circumvented this problem by utilizing special struc-    References
+tural properties of residual networks to efficiently compute
+the Laplacian.                                                  Avron, H. and Toledo, S. Randomized algorithms for esti-
+                                                                   mating the trace of an implicit symmetric positive semi-
+                                                                   definite matrix. J. ACM, 58(2):8:1–8:34, 2011. doi:
+9. Discussion
+                                                                   10.1145/1944345.1944349. URL https://doi.org/
+In practice, RNODE is simple to implement, and only re-            10.1145/1944345.1944349.
+quires augmenting the dynamics (ODE) with two extra
+scalar equations (one for the kinetic energy term, and an-      Behrmann, J., Grathwohl, W., Chen, R. T. Q., Duve-
+other for the Jacobian penalty). In the setting of FFJORD,         naud, D., and Jacobsen, J. Invertible residual networks.
+because we may recycle intermediary terms used in the              In Chaudhuri, K. and Salakhutdinov, R. (eds.), Pro-
+divergence estimate, the computational cost of evaluating          ceedings of the 36th International Conference on Ma-
+these two extra equations is minimal. RNODE introduces             chine Learning, ICML 2019, 9-15 June 2019, Long
+two extra hyperparameters related to the strength of the reg-      Beach, California, USA, volume 97 of Proceedings
+ularizers; we have found these required almost no tuning.          of Machine Learning Research, pp. 573–582. PMLR,
+                                                                   2019. URL http://proceedings.mlr.press/
+Although the problem of classification was not considered          v97/behrmann19a.html.
+in this work, we believe RNODE may offer similar im-
+provements both in training time and the regularity of the      Benamou, J.-D. and Brenier, Y. A computational fluid me-
+classifier learned. In the classification setting we expect the    chanics solution to the Monge-Kantorovich mass transfer
+computional overhead of calculating the two extra terms            problem. Numerische Mathematik, 84(3):375–393, 2000.
+should be marginal relative to gains made in training time.
+                                                                Chen, T. Q., Rubanova, Y., Bettencourt, J., and Duve-
+                                                                   naud, D. Neural Ordinary Differential Equations. In
+10. Conclusion                                                     Advances in Neural Information Processing Systems 31:
+We have presented RNODE, a regularized method for neu-             Annual Conference on Neural Information Processing
+ral ODEs. This regularization approach is theoretically            Systems 2018, NeurIPS 2018, 3-8 December 2018,
+well-motivated, and encourages neural ODEs to learn well-          Montréal, Canada, pp. 6572–6583, 2018. URL http:
+behaved dynamics. As a consequence, numerical integration          //papers.nips.cc/paper/7892-neural-
+of the learned dynamics is straight forward and relatively         ordinary-differential-equations.
+easy, which means fewer discretizations are needed to solve     Chen, T. Q., Behrmann, J., Duvenaud, D., and Jacobsen,
+the dynamics. In many circumstances, this allows for the re-       J. Residual flows for invertible generative modeling.
+placement of adaptive solvers with fixed grid solvers, which       In Wallach, H. M., Larochelle, H., Beygelzimer,
+can be more efficient during training. This leads to a sub-        A., d’Alché-Buc, F., Fox, E. B., and Garnett, R.
+stantial speed up in training time, while still maintaining        (eds.), Advances in Neural Information Processing
+the same empirical performance, opening the use of neural          Systems 32: Annual Conference on Neural Information
+ODEs to large-scale applications.                                  Processing Systems 2019, NeurIPS 2019, 8-14 Decem-
+                                                                   ber 2019, Vancouver, BC, Canada, pp. 9913–9923,
+Acknowledgements                                                   2019.     URL http://papers.nips.cc/paper/
+                                                                   9183-residual-flows-for-invertible-
+C. F. and A. O. were supported by a grant from the Innova-         generative-modeling.
+tive Ideas Program of the Healthy Brains and Healthy Lives
+initiative (HBHL) through McGill University.                    Dinh, L., Sohl-Dickstein, J., and Bengio, S. Den-
+L. N. was supported by AFOSR MURI FA9550-18-1-0502,                sity estimation using real NVP. In 5th International
+AFOSR Grant No. FA9550-18-1-0167, and ONR Grant No.                Conference on Learning Representations, ICLR 2017,
+N00014-18-1-2527.                                                  Toulon, France, April 24-26, 2017, Conference Track Pro-
+                                                                   ceedings, 2017. URL https://openreview.net/
+A. O. was supported by the Air Force Office of Scientific          forum?id=HkpbnH9lx.
+Research under award number FA9550-18-1-0167
+                                                                Dormand, J. R. and Prince, P. J. A family of embedded
+Resources used in preparing this research were provided, in        Runge-Kutta formulae. Journal of computational and
+part, by the Province of Ontario, the Government of Canada         applied mathematics, 6(1):19–26, 1980.
+                     How to Train Your Neural ODE: the World of Jacobian and Kinetic Regularization
+Drucker, H. and LeCun, Y. Improving generalization per-      Hutchinson, M. F. A stochastic estimator of the trace of the
+  formance using double backpropagation. IEEE Trans.            influence matrix for Laplacian smoothing splines. Com-
+  Neural Networks, 3(6):991–997, 1992. doi: 10.1109/            munications in Statistics-Simulation and Computation,
+  72.165600.       URL https://doi.org/10.1109/                 19(2):433–450, 1990.
+  72.165600.
+                                                             Kanaa, D., Voleti, V., Kahou, S., and Pal, C. Simple video
+Dupont, E., Doucet, A., and Teh, Y. W. Augmented                generation using neural ODEs. Workshop on Learning
+  neural ODEs. In Wallach, H. M., Larochelle, H.,               with Rich Experience, Advances in Neural Information
+  Beygelzimer, A., d’Alché-Buc, F., Fox, E. B., and Gar-       Processing Systems 32: Annual Conference on Neural
+  nett, R. (eds.), Advances in Neural Information Pro-          Information Processing Systems 2019, NeurIPS 2019,
+  cessing Systems 32: Annual Conference on Neural               8-14 December 2019, Vancouver, BC, Canada, 2019.
+  Information Processing Systems 2019, NeurIPS 2019,
+  8-14 December 2019, Vancouver, BC, Canada, pp.             Karras, T., Aila, T., Laine, S., and Lehtinen, J. Pro-
+  3134–3144, 2019. URL http://papers.nips.cc/                   gressive growing of gans for improved quality, stabil-
+  paper/8577-augmented-neural-odes.                             ity, and variation. CoRR, abs/1710.10196, 2017. URL
+                                                                http://arxiv.org/abs/1710.10196.
+E, W. A Proposal on Machine Learning via Dynam-
+  ical Systems. Communications in Mathematics and            Kingma, D. P. and Ba, J. Adam: A method for stochastic op-
+  Statistics, 5(1):1–11, March 2017. ISSN 2194-671X.            timization. In 3rd International Conference on Learning
+  doi: 10.1007/s40304-017-0103-z. URL https://                  Representations, ICLR 2015, San Diego, CA, USA, May
+  doi.org/10.1007/s40304-017-0103-z.                            7-9, 2015, Conference Track Proceedings, 2015. URL
+                                                                http://arxiv.org/abs/1412.6980.
+Goyal, P., Dollár, P., Girshick, R. B., Noordhuis, P.,
+                                                             Kingma, D. P. and Dhariwal, P. Glow: Generative flow
+  Wesolowski, L., Kyrola, A., Tulloch, A., Jia, Y., and
+                                                                with invertible 1x1 convolutions. In Bengio, S., Wallach,
+  He, K. Accurate, large minibatch SGD: training ima-
+                                                                H. M., Larochelle, H., Grauman, K., Cesa-Bianchi, N.,
+  genet in 1 hour. CoRR, abs/1706.02677, 2017. URL
+                                                                and Garnett, R. (eds.), Advances in Neural Information
+  http://arxiv.org/abs/1706.02677.
+                                                                Processing Systems 31: Annual Conference on Neural
+Grathwohl, W., Chen, R. T. Q., Bettencourt, J., Sutskever,      Information Processing Systems 2018, NeurIPS 2018,
+  I., and Duvenaud, D. FFJORD: free-form continu-               3-8 December 2018, Montréal, Canada, pp. 10236–
+  ous dynamics for scalable reversible generative mod-          10245, 2018.        URL http://papers.nips.cc/
+  els. In 7th International Conference on Learning Rep-         paper/8224-glow-generative-flow-with-
+  resentations, ICLR 2019, New Orleans, LA, USA, May            invertible-1x1-convolutions.
+  6-9, 2019, 2019. URL https://openreview.net/
+                                                             Köhler, J., Klein, L., and Noé, F. Equivariant flows: sam-
+  forum?id=rJxgknCcK7.
+                                                                pling configurations for multi-body systems with sym-
+Haber, E. and Ruthotto, L. Stable architectures for deep        metric energies. arXiv preprint arXiv:1910.00753, 2019.
+  neural networks. Inverse Problems, 34(1):014004, 2017.     Krizhevsky, A. and Hinton, G.              Learning multiple
+He, K., Zhang, X., Ren, S., and Sun, J. Deep resid-             layers of features from tiny images. Technical re-
+  ual learning for image recognition. In 2016 IEEE              port, University of Toronto, 2009. URL http://
+  Conference on Computer Vision and Pattern Recogni-            www.cs.toronto.edu/ ̃kriz/cifar.html.
+  tion, CVPR 2016, Las Vegas, NV, USA, June 27-30,           LeCun, Y. and Cortes, C. The MNIST database of handwrit-
+  2016, pp. 770–778. IEEE Computer Society, 2016. doi:          ten digits. 1998. URL http://yann.lecun.com/
+  10.1109/CVPR.2016.90. URL https://doi.org/                    exdb/mnist/.
+  10.1109/CVPR.2016.90.
+                                                             Li, X., Wong, T. L., Chen, R. T. Q., and Duvenaud, D. Scal-
+Ho, J., Chen, X., Srinivas, A., Duan, Y., and Abbeel, P.        able gradients for stochastic differential equations. CoRR,
+  Flow++: Improving flow-based generative models with           abs/2001.01328, 2020. URL http://arxiv.org/
+  variational dequantization and architecture design. In        abs/2001.01328.
+  Chaudhuri, K. and Salakhutdinov, R. (eds.), Proceedings
+  of the 36th International Conference on Machine Learn-     Novak, R., Bahri, Y., Abolafia, D. A., Pennington, J., and
+  ing, ICML 2019, 9-15 June 2019, Long Beach, California,       Sohl-Dickstein, J. Sensitivity and generalization in neural
+  USA, volume 97 of Proceedings of Machine Learning             networks: an empirical study. In 6th International Con-
+  Research, pp. 2722–2730. PMLR, 2019. URL http:                ference on Learning Representations, ICLR 2018, Van-
+  //proceedings.mlr.press/v97/ho19a.html.                       couver, BC, Canada, April 30 - May 3, 2018, Conference
+                      How to Train Your Neural ODE: the World of Jacobian and Kinetic Regularization
+  Track Proceedings. OpenReview.net, 2018. URL https:            Processing Systems 2019, NeurIPS 2019, 8-14 December
+  //openreview.net/forum?id=HJC2SzZCW.                           2019, Vancouver, BC, Canada, pp. 13412–13421, 2019.
+                                                                 URL      http://papers.nips.cc/paper/9497-
+Pontryagin, L. S., Mishchenko, E., Boltyanskii, V., and          ode2vae-deep-generative-second-order-
+  Gamkrelidze, R. The mathematical theory of optimal             odes-with-bayesian-neural-networks.
+  processes. 1962.
+                                                              Zhang, L., E, W., and Wang, L. Monge-Ampère flow for
+Rubanova, Y., Chen, T. Q., and Duvenaud, D. K. Latent or-        generative modeling. CoRR, abs/1809.10188, 2018. URL
+  dinary differential equations for irregularly-sampled time     http://arxiv.org/abs/1809.10188.
+  series. In Advances in Neural Information Processing
+  Systems, pp. 5321–5331, 2019.
+Ruthotto, L. and Haber, E. Deep neural networks motivated
+  by partial differential equations. Journal of Mathematical
+  Imaging and Vision, pp. 1–13, 2018.
+Ruthotto, L., Osher, S. J., Li, W., Nurbekyan, L., and
+  Fung, S. W. A machine learning framework for solv-
+  ing high-dimensional mean field game and mean field
+  control problems. CoRR, abs/1912.01825, 2019. URL
+  http://arxiv.org/abs/1912.01825.
+Santambrogio, F. Benamou-Brenier and other continu-
+  ous numerical methods, pp. 219–248. Springer Interna-
+  tional Publishing, Cham, 2015. ISBN 978-3-319-20828-
+  2. doi: 10.1007/978-3-319-20828-2 6. URL https:
+  //doi.org/10.1007/978-3-319-20828-2 6.
+Twomey, N., Kozlowski, M., and Santos-Rodrı́guez, R. Neu-
+  ral ODEs with stochastic vector field mixtures. CoRR,
+  abs/1905.09905, 2019. URL http://arxiv.org/
+  abs/1905.09905.
+van den Oord, A., Kalchbrenner, N., and Kavukcuoglu,
+  K.       Pixel recurrent neural networks.           CoRR,
+  abs/1601.06759, 2016. URL http://arxiv.org/
+  abs/1601.06759.
+Villani, C. Topics in Optimal Transportation. Graduate
+  studies in mathematics. American Mathematical Society,
+  2003. ISBN 9780821833124.
+Villani, C. Optimal Transport: Old and New. Grundlehren
+  der mathematischen Wissenschaften. Springer Berlin Hei-
+  delberg, 2008. ISBN 9783540710509. URL https://
+  books.google.ca/books?id=hV8o5R7 5tkC.
+Yang, L. and Karniadakis, G. E. Potential flow gener-
+  ator with L2 Optimal Transport regularity for gener-
+  ative models. CoRR, abs/1908.11462, 2019. URL
+  http://arxiv.org/abs/1908.11462.
+Yildiz, C., Heinonen, M., and Lähdesmäki, H. ODE2VAE:
+  deep generative second order ODEs with Bayesian neural
+  networks. In Wallach, H. M., Larochelle, H., Beygelz-
+  imer, A., d’Alché-Buc, F., Fox, E. B., and Garnett,
+  R. (eds.), Advances in Neural Information Processing
+  Systems 32: Annual Conference on Neural Information
+
+A. Details of Section 3.1: Benamou-Brenier                         Hence, multiplying the objective function in (20) by λ and
+    formulation in Lagrangian coordinates                          ignoring the f -independent term Ex∼p log p(x) we obtain
+                                                                   an equivalent objective function
+The Benamou-Brenier formulation of the optimal transporta-                   
+tion (OT) problem in Eulerian coordinates is                        
+                                                                      <<FORMULA>>                      (21)
+
+                  <<FORMULA>>                             (18a)
+
+                                                                   Finally, if we assume that {xi }N  i=1 are iid sampled from p,
+                  <<FORMULA>>                             (18b)    we obtain the empirical objective function
+
+                         ρ0 (x) = p,                      (18c)         
+
+                         ρT (z) = q.                      (18d)                 <<FORMULA>>                         (22)
+
+ The connection between continuous normalizing flows
+(CNF) and OT becomes transparent once we rewrite (18) in
+Lagrangian coordinates. Indeed, for regular enough velocity
+                                                                   B. Additional results
+fields f one has that the solution of the continuity equation      Here we present additional generated samples on the two
+(18b), (18c) is given by ρt = z(·, t)]p where z is the flow        larger datasets considered, CelebA-HQ and ImageNet64. In
+                                                                   addition bits/dim on clean images are reported in Table 2.
+         <<FORMULA>>
+
+The relation ρt = z(·, t)]p means that for arbitrary test
+function φ we have that
+
+               φ(x)ρt (x, t)dx = φ(z(x, t))p(x)dx
+
+Therefore (18) can be rewritten as
+
+   min      kf (z(x, t), t)k2 p(x) dxdt                   (19a)
+
+   subject to         ż(x, t) = f (z(x, t), t),           (19b)
+
+                      z(x, 0) = x,                         (19c)
+
+                      z(·, T )]p = q.                      (19d)
+
+Note that ρt is eliminated in this formulation. The terminal
+condition (18d) is trivial to implement in Eulerian coordi-
+nates (grid-based methods) but not so simple in Lagrangian
+ones (19d) (grid-free methods). To enforce (19d) we intro-
+duce a penalty term in the objective function that measures
+the deviation of z(·, T )]p from q. Thus, the penalized ob-
+jective function is
+               <<FORMULA>>          (20)
+where λ > 0 is the penalization strength. Next, we observe
+that this objective function can be written as an expectation
+with respect to x ∼ p. Indeed, the Kullback-Leibler di-
+vergence is invariant under coordinate transformations, and
+therefore
+
+         <<FORMULA>>
+              
+                  <<FIGURE>>
+Figure 7. Quality of FFJORD RNODE generated images on ImageNet-64.
+
+               <<FIGURE>>
+Figure 8. Quality of FFJORD RNODE generated images on CelebA-HQ. We use temperature annealing, as described in (Kingma &
+Dhariwal, 2018), to generate visually appealing images, with T = 0.5, . . . , 1.
+
+Table 2. Additional results and model statistics of FFJORD RNODE. Here we report validation bits/dim on both validation images, and on
+validation images with uniform variational dequantization (ie perturbed by uniform noise). We also report number of trainable model
+parameters.
+                          <<TABLE>>
