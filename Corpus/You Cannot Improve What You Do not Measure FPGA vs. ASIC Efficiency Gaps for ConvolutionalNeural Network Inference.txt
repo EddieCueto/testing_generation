@@ -1,0 +1,1187 @@
+     You Cannot Improve What You Do not Measure:
+     FPGA vs. ASIC Efficiency Gaps for Convolutional
+     Neural Network Inference
+
+     ANDREW BOUTROS, SADEGH YAZDANSHENAS, and VAUGHN BETZ,
+     Department of Electrical and Computer Engineering, University of Toronto
+
+     Recently, deep learning (DL) has become best-in-class for numerous applications but at a high computational
+     cost that necessitates high-performance energy-efffcient acceleration. The reconffgurability of FPGAs is ap-
+     pealingduetotherapidchangeinDLmodelsbutalsocauseslowerperformanceandarea-efffciencycompared
+     to ASICs. In this article, we implement three state-of-the-art computing architectures (CAs) for convolutional
+     neural network (CNN) inference on FPGAs and ASICs. By comparing the FPGA and ASIC implementations,
+     we highlight the area and performance costs of programmability to pinpoint the inefffciencies in current
+     FPGA architectures. We perform our experiments using three variations of these CAs for AlexNet, VGG-16
+     and ResNet-50 to allow extensive comparisons. We ffnd that the performance gap varies signiffcantly from
+     2.8×to 6.3×, while the area gap is consistent across CAs with an 8.7 average FPGA-to-ASIC area ratio. Among
+     different blocks of the CAs, the convolution engine, constituting up to 60% of the total area, has a high area
+     ratio ranging from 13 to 31. Motivated by our FPGA vs. ASIC comparisons, we suggest FPGA architectural
+     changes such as increasing DSP block count, enhancing low-precision support in DSP blocks and rethinking
+     the on-chip memories to reduce the programmability gap for DL applications.
+     CCSConcepts:•Hardware→ReconffgurablelogicandFPGAs;Hardwareaccelerators;Reconffgurable
+     logic applications;
+     Additional Key Words and Phrases: Deep learning, convolutional neural networks, FPGA, ASIC
+     ACM Reference format:
+     Andrew Boutros, Sadegh Yazdanshenas, and Vaughn Betz. 2018. You Cannot Improve What You Do not Mea-
+     sure: FPGA vs. ASIC Efffciency Gaps for Convolutional Neural Network Inference.ACM Trans. Reconffgurable
+     Technol. Syst.11, 3, Article 20 (December 2018), 23 pages.
+     https://doi.org/10.1145/3242898
+
+     1 INTRODUCTION
+     Recent advances in deep learning (DL) have led to breakthroughs in a myriad of ffelds, achiev-
+     ing unprecedented accuracy in tasks that were thought to be inherently unsuitable for our com-
+     puting machines to perform. It has become, in a very short time span, thede-factostandard for
+     numerous applications ranging from simple image classiffcation [36], machine translation [44],
+     Authors’ addresses: A. Boutros and V. Betz, Department of Electrical and Computer Engineering, University of Toronto,
+     10 King’s College Road, Toronto, Ontario M5S 3G4, Canada and Vector Institute, Toronto, ON, Canada; emails: andrew.
+     boutros@mail.utoronto.ca, vaughn@eecg.utoronto.ca; S. Yazdanshenas, Department of Electrical and Computer Engineer-
+     ing, University of Toronto, 10 King’s College Road, Toronto, Ontario M5S 3G4, Canada; email: sadegh.yazdanshenas@
+     mail.utoronto.ca.
+     Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee  20 provided that copies are not made or distributed for profft or commercial advantage and that copies bear this notice and
+     the full citation on the ffrst page. Copyrights for components of this work owned by others than ACM must be honored.
+     Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires
+     prior speciffc permission and/or a fee. Request permissions frompermissions@acm.org.
+     © 2018 Association for Computing Machinery.
+     1936-7406/2018/12-ART20 $15.00
+     https://doi.org/10.1145/3242898
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:2 A.Boutrosetal.
+
+       and speech recognition [10] to generating artistic paintings [9], composing music [7], and beating
+       world champions in complex board games [41]. Interestingly, the basic foundations of DL and the
+       algorithm currently used to train deep neural networks (DNNs), known as back-propagation, were
+       established in the 1980s [35]. But it was not until recent years that it experienced a resurgence of
+       interest [20], powered by both the abundance of data required for training and the availability of
+       the tremendous compute-power necessary to train and deploy those models.
+         However, the main drawback of DNNs remains to be their high computational complexity when
+       compared to conventional detection and classiffcation computer vision algorithms based on hand-
+       crafted features. For example, a relatively simple eight-layer convolutional neural network (CNN),
+       AlexNet [20], has a computational complexity of 25.8GOP/Mpixel for its convolutional layers,
+       which is 36.9×higher than that of a conventional histogram of oriented gradients feature extractor
+       [43]. This gap grows even wider as we seek to improve the accuracy of CNNs by building deeper,
+       bigger and more complex models that can surpass human-level performance on visual recogni-
+       tion tasks [14]. The ImageNet large-scale visual recognition challenge witnessed a 15×increase
+       in operations required per image inference in return for an 11.7% reduction in classiffcation error
+       between 2012 and 2015 [15,36]. This substantial increase in compute requirements motivates high-
+       performance and energy-efffcient hardware accelerators to replace or co-exist with conventional
+       CPUs in executing both CNN training and inference tasks.
+         The training of CNN models is commonly performed in ffoating-point representation on graph-
+       ics processing units (GPUs) having thousands of cores and large external memory bandwidth. It
+       does not require much effort to deploy existing models or train new ones on GPUs using various
+       frameworks (e.g., Caffe [18] and TensorFlow [1]) that exploit highly optimized GPU libraries such
+       as Nvidia CuDNN [5] for dense and sparse matrix operations. Although GPUs can deliver high
+       performance by performing batch computations, they are extremely power-hungry. This is afford-
+       able for training, which has no constraints on output latency and is carried out a limited number
+       of times during the development phase. However, when it comes to inference, this is not ideal for
+       a wide class of applications that have limited power budget and tight latency constraints such as
+       mobile embedded platforms, self-driving cars or large-scale datacenter services.
+         Toachievethebestperformanceandenergy-efffciency,manyresearchershavefocusedonbuild-
+       ing custom application-speciffc integrated circuits (ASICs) for accelerating CNNs inference work-
+       loads. Some examples are DaDianNao [3] that accelerates different types of DNNs using a multi-
+       chip architecture and Eyeriss [4] that focuses on energy-efffcient acceleration of convolutional
+       layers by maximizing data re-use, performing data compression and using a zero-skipping tech-
+       nique. Despite being an attractive solution, ASICs do not offer enough ffexibility to accommodate
+       the rapid evolution of CNN models and the emergence of new types of layers used in them includ-
+       ing the branching, elementwise addition and batch normalization layers as in more recent models
+       (e.g., GoogLeNet [45] and ResNet [15]). As well, the high non-recurring engineering (NRE) cost
+       and time for design, veriffcation and fabrication of a large ASIC chip makes it difffcult to keep pace
+       with the rapid model improvements in this space.
+         As a trade-off between performance, power-efffciency, and ffexibility, FPGAs offer an interest-
+       ing design point between GPUs and ASICs and recently have had much success in accelerating
+       datacenter workloads in general [32] and more speciffcally CNN inference tasks [30]. In contrast
+       to GPUs, FPGAs are generally more energy-efffcient. A high-end Titan X Nvidia GPU can consume
+       up to 5×more power compared to a high-end Intel Arria 10 FPGA running AlexNet inference tasks
+       [2]. Several studies have also shown that CNN inference does not require high-precision ffoating-
+       point computations and can be carried out using ffxed-point arithmetic for less than 1% accuracy
+       degradation [13]. This wide variety of precisions used in CNN inference matches well with FP-
+       GAs as they can execute non-standard custom bit-width datapaths with much higher efffciency
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:3
+
+       and ffexibility than GPUs. However, they have a shorter turn-around time, less NRE cost, and can
+       be re-conffgured to support new models and layer types when compared to ASIC accelerators.
+       Another interesting advantage for FPGAs is that they offer a variety of I/Os that support different
+       communication protocols. This is useful when the CNN accelerator is a part of a larger system
+       and receives inputs from different types of digital and analog sensors as the case in automotive
+       applications. However, FPGAs run at signiffcantly lower frequencies due to their reconffgurability
+       overhead and thus have lower raw performance compared to both GPUs and ASICs.
+         For this reason and despite their drawbacks, several companies have developed ASIC solutions
+       to meet the processing needs of high-performance DL applications. A recent example for that is
+       Google’sTensorProcessingUnit[19]thatwasdeployedindatacenterstoaccelerateinferencetasks
+       for various types of DNNs. It has almost 17×more multiply accumulate (MAC) units, 5.6×more
+       on-chip memory and runs at 3.5×higher frequency when compared to Microsoft’s Catapult V1
+       [32] that uses Intel Stratix V FPGAs. In this work, we study the area and performance gap between
+       FPGAs and ASICs in accelerating inference tasks using multiple CNN computing architectures
+       (CAs) to highlight the limitations of current FPGA architectures and how they affect the overall
+       performance of DL accelerators. The motive behind this study is twofold; First, it shows which
+       design practices are more suitable for FPGA platforms and make the best use of current FPGA
+       architectures. Second, it provides FPGA architects with data on where FPGAs have the largest
+       efffciency gap compared to ASICs, which can lead to insights on how current FPGA architectures
+       could be modiffed to shrink this gap and deliver higher performance in a domain with extremely
+       high demand such as DL.
+         In this article, we make the following contributions:
+          •WeimplementhighlyoptimizedRTLdesignsforthreestate-of-the-artCAsthatusedifferent
+            parallelization schemes to accelerate CNNs. We then extend each of these previously pub-
+            lished architectures to support all layer types required to implement three different CNN
+            models: AlexNet, VGG-16, and ResNet-50 to ensure our comparisons consider a broadly
+            representative set of CNN models and implementations.
+          •We present a quantitative comparison of area and performance results to measure the gap
+            between the same CAs implemented on a high-end Intel Arria 10 FPGA and a 28nm ASIC.
+          •We trace back the bottlenecks resulting in this gap and pinpoint the limitations of current
+            FPGA architectures in accelerating CNNs.
+       2 BACKGROUND
+       Deep Neural Networks are a class of machine-learning algorithms that were developed to mimic
+       the information-processing paradigm in biological nervous systems. The human brain as an ex-
+       ample has an average of around 86 billion neurons [16] connected in a complex network in which
+       each neuron receives inputs from its surrounding neurons and ffres an activation if those inputs
+       are greater than a speciffc threshold. Inspired by this system, DNNs typically consist of several
+       layers each of which hasd(l) neurons wherelis the layer number ranging from 1 toL.Eacharti-
+       ffcial neuron performs a biased weighted sum of all its inputs followed by a non-linear activation
+       function to produce its output as shown in Equation (1), wherex(l) is the output of neuroniof i
+       layerl,w(l) is the weight parameter between the neuronjin layerland neuroniin layerl−1, ij
+       w(l) is the bias term andθis the non-linear activation function that can be a sigmoid, tanh, or 0j rectiffed linear unit (ReLU) function. This equation can be viewed as a series of MAC operations,
+       which form the majority of computations in DNNs:
+
+                             x(l) =θ    d  (l−1)
+                                   w(l) +   x(l−1) wl .                    (1) j      0j      i   ij
+                                       i=1      
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:4 A.Boutrosetal.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                         Fig. 1. Different layer types in an example CNN.
+
+         CNNs are a subset of DNNs in which the connections between neurons of successive layers
+       are sparse. Each neuron receives inputs only from neighboring neurons of the previous layer or
+       so-called itsreceptive ffeld. This signiffcantly reduces the number of weights and MAC operations
+       required and achieves high accuracy in applications with spacial or temporal correlation between
+       input samples such as image classiffcation, gesture and speech recognition. Sections2.1and2.2
+       describe the main layers of a CNN and present a summary of the previous related work on accel-
+       erating CNNs on FPGAs.
+
+       2.1 Overview of CNN Layers
+       CNN models typically consist of different layer types cascaded together such that the output of a
+       speciffc layer is consumed by the subsequent one in a feed-forward scheme during inference. In
+       Figure1, we show an example CNN, and we illustrate the functionality of each of the layer types
+       subsequently explained in this section.
+
+         2.1.1 Convolutional (CONV) Layers.A CONV layer takes a set ofNIM two-dimensional input
+       feature maps. It accumulates the results of 2D convolutions with strideSbetween each input fea-
+       ture map and its correspondingK×Kkernel of learnable weights to produce a two-dimensional
+       output feature map. This is performed usingNOM different sets of kernels to generateNOM output
+       feature maps that are consumed by the subsequent layer. CONV layers are very compute-intensive
+       and represent the majority of computation in a CNN, which motivated many designers to focus
+       on accelerating only the CONV and not all CNN layers [55]. We also notice that as CNN models
+       get deeper, the portion of CONV layers operations compared to the total number of operations
+       increases as they constitute 91.6%, 99.1%, and 99.8% of the total operations count for AlexNet,
+       VGG-16, and ResNet-50, respectively.
+         The computation of CONV layers can be summarized using the six nested loops in Algorithm1;
+       they are highly parallelizable and can achieve high gains through hardware acceleration. However,
+       it is a non-trivial optimization problem to choose the tiling and unrolling factors of those loops
+       to achieve the best performance within the limited available hardware resources [27]. Typically, a
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:5
+
+
+       ALGORITHM 1:Nested loops for CONV layers computation
+       Loop 1: for(j=0;j<NOM ;j++)do
+          Loop 2: for(x=0;x<NOX ;x+=S)do
+            Loop 3: for(y=0;y<NOY ;y+=S)do
+               Loop 4: for(i=0;i<NIM ;i++)do
+                 Loop 5: for(kx =0;kx <K;kx ++)do
+                    Loop 6: for(ky =0;ky <K;ky ++)do
+                      out(j,x,y)+=in(i,x+kx ,y+ky )×weiдht(j,i,kx ,ky )
+               out(j,x,y)+=bias(j)
+
+       non-linearactivationfunctionsuchastheReLUfunctionθ(x)=max(0,x)isappliedto theoutputs
+       of a CONV layer before passing them to the next layers.
+         2.1.2 Local Response Normalization (LRN) and Batch Normalization (BNORM) Layers.LRNisa
+       heavily arithmetic layer that was used in the early CNN models such as AlexNet to normalize each
+       element in its input feature maps with respect to the elements at the same location in the adjacent
+       KN maps using the formula in Equation (2). The function of the LRN layer is to create lateral
+       inhibition for the output values especially when using ReLU as an unbounded activation function
+       [20]. However, this layer is removed in newer models and is sometimes replaced by BNORM layer
+       followed by scaling, as in ResNets, which cuts down the required training steps and achieves the
+       same accuracy. The computation for the BNORM layer is shown in Equation (3)whereμandσ2
+       are statistically computed over the training data set andγandβare learned during the training
+       phase of the CNN [17] but are all constants for inference:
+                                                           −β
+                                    out(j,x,y)=in(j,x,y)×   α min(j+  KN ,N2  OM )       1+             in 2 (i,x,y)K                   ,         (2)
+                                        N      i=max(0,j−KN )       2
+                                                 in(j,x,y)−μout(j,x,y)=γ    √      +β.                   (3)σ2
+         2.1.3 Pooling (POOL) Layers.Another key layer in CNN is the POOL layer, which acts as a
+       down-sampling function such that its input feature maps of sizeNX ×NY are reduced in size but
+       the number of input and output feature maps stays the same. There are different variations for
+       POOL layers such as Max-POOL and Average-POOL, where each element in the output feature
+       map represents the maximum or average value of a window of sizeKP ×KP in the original input
+       feature map, respectively.
+         2.1.4 Element-Wise (ELTWISE) Layers.Recent CNNs have more complex models with branch-
+       ing layers and skipping connections forming a directed acyclic graph as shown in Figure1after
+       CONV2 layer. An ELTWISE layer combines two branches by performing an element-wise addi-
+       tion of the elements of a skipping branch and the results of a CONV layer. Reference [38]proposed
+       the use of weighted addition in ELTWISE layers for deeper networks with more than 100 layers;
+       however, we focus on the unweighted variation of ELTWISE layers in this work. For this layer, the
+       dimensions of the output feature maps match those of the input feature maps.
+         2.1.5 Fully Connected (FC) Layers.The last layers of CNNs are typically FC layers, which are
+       similar to those of conventional DNNs. The output of an FC layer is a one-dimensional vector
+       of sizeNFC . Each element in this vector is a weighted sum of all the outputs of the previous
+       layer, which were re-shaped into a one-dimensional vector of size out                                    NFC . As shown in Figure1,in
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:6 A.Boutrosetal.
+
+       it is characterized by the large number of weights involved in computation (NFC ×Nin   FC )that,
+       unliketheconvolutionkernels,cannotbere-used.Therefore,FClayersareusuallymemory-bound, out
+
+       but more recent CNN models have a smaller number of FC layers with fewer weights making them
+       less problematic. For instance, ResNet-50 has only 1 FC layer that has about 8% of the total number
+       ofweightsinthenetworkcomparedtothreeFClayerswith96%ofthenetworkweightsinAlexNet,
+       which further prioritizes the acceleration of CONV layers over other types of layers.
+
+       2.2 Related Work
+       Research efforts to accelerate CNNs on FPGAs can be classiffed into two major categories. The
+       ffrst category of work focuses on optimizing the mapping of CNN models to current FPGA archi-
+       tectures. For example, Reference [55] presents an analytical design methodology for design space
+       exploration using the roof-line model to ffnd the optimal loop unrolling and tiling parameters for
+       the CONV loops shown in Algorithm1. This work is extended in Reference [56] to a multi-FPGA
+       cluster using dynamic programming with the target of maximizing throughput or minimizing la-
+       tency. To overcome under-utilization of resources resulting from different sizes of CONV layers,
+       References [39] and [40] partition the available resources using a dynamic programming technique
+       into multiple convolutional layer processors, each of which is optimized for a subset of CONV lay-
+       ers. Another aspect of optimizing CNNs for FPGA acceleration is model compression by using
+       techniques such as Singular Value Decomposition for FC layers [33]. Another compression tech-
+       nique reduces precision down to ternary [31,49] or binary [29,47] networks that are inherently
+       more FPGA-friendly, and exhibit little or no accuracy degradation by increasing the size of the
+       network as in Reference [28]. The use of non-standard ffoating-point number representations has
+       also been proposed by Microsoft’s BrainWave project [6] that uses its custom 8-bit/9-bit ffoating-
+       point precision without suffering any accuracy loss. Recent work has also proposed the use of
+       mathematical optimizations such as Winograd and Fast Fourier Transformations to decrease the
+       number of MAC operations required in CONV layers as in References [2,24,57].
+         The second category seeks to ease development of DL accelerators on FPGAs such that it
+       requires minimal hardware design expertise. Some works have investigated the use of High-Level
+       Synthesis FPGA tools to implement CNNs in high-level programming languages that are synthe-
+       sized into hardware [42]. Another widely investigated approach is to build automatic compilers
+       to produce an end-to-end optimized accelerator for a speciffc CNN model and a speciffc FPGA
+       platform [23,25,26]. In Reference [48], the authors present a framework that takes a CNN model
+       described in a domain-speciffc language, converts it to a synchronous dataffow graph, optimizes
+       performance and resource utilization via algebraic transformations, and ffnally generates a Vivado
+       HLS hardware design. An open-source RTL template-based compiler that transforms a high-level
+       description of the CNN model in the sameprototxtformat used by Caffe into an FPGA accelerator
+       is also presented in Reference [37]. Similar frameworks were presented in References [51] and [11]
+       that use Caffe-described and TensorFlow-described models along with RTL and RTL-HLS hybrid
+       templates, respectively, to implement FPGA accelerators for not only CNN models but also Multi-
+       Layer Perceptrons and Recurrent Neural Networks. The authors of Reference [52] implement
+       an automated design ffow that generates high-performance systolic array CNN architectures
+       and a two-phase design space exploration scheme using analytical models as well as on-board
+       implementations.
+         Our work is complementary to these studies and serves as the ffrst step toward improving the
+       current FPGA architecture, which was considered a constant factor by all previous works, for
+       more efffcient acceleration of emerging and highly motivated applications as DL. To the best of
+       our knowledge, this work is the ffrst attempt to quantify the area and performance gap between
+       FPGA and ASIC implementations of state-of-the-art CNN CAs, highlight the architectural features
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:7
+
+                         Table 1. Main Differences between the Three CAs
+        Comparison Aspect     ASU-like       Intel-DLA-like     Chain-NN-like
+        MAC Units Array    Three-dimensional   Two-dimensional    One-dimensional
+                            Conventional    Winograd Transform    ConventionalConvolution Method   sliding-window   for 3×3 convolutions   sliding-window
+                          A centralized buffer A centralized buffer for A small distributedWeight Buffers      for a group of PEs     a group of PEs     buffer for each PE
+                          Double buffers for  Interchangeable double No double buffering
+        Double Buffering      weights in FC    buffers for features in
+                                              CONV
+
+
+       of current FPGA architectures causing it, and present suggested architectural solutions that can
+       reduce this gap.
+
+       3 COMPUTING ARCHITECTURES
+       We implement three different highly optimized state-of-the-art CAs for accelerating CNN infer-
+       encetasksinRTLusingparameterizableSystemVerilogHDL.WerefertothethreeCAsasASU-like
+       [26,27],Intel-DLA-like[2],andChain-NN-like[50].Weimplementallthehardwarecomputational
+       blocks required to execute all the layers described in Section2.1for three different CNN models:
+       AlexNet, VGG-16, and ResNet-50. We also implement the control logic required to run the CAs
+       starting from reading the input features and weights from on-chip buffers, transferring them to
+       the computational blocks, and writing the ffnal results in the output feature buffers. The on-chip
+       buffer sizes and the parallelization factors for each of the nested CONV loops are ffxed in both
+       the FPGA and ASIC implementations for each of these CAs according to the optimal design point
+       originally reported in References [2,27,50]. For consistency and to enable fair comparisons, we
+       also use a ffxed-point data representation for all three CAs with 16-bit features and 8-bit weights
+       as in Reference [27], which causes less than 2% accuracy degradation. We consider the external
+       memory interface and direct memory access engines to be out of the scope of this work, as they
+       do not affect the conclusions we seek to draw about the performance and area gaps or the bot-
+       tlenecks of current FPGA architectures in accelerating CNNs. However, our performance models
+       put off-chip data transfer into consideration according to any external memory interface that we
+       specify. In our experiments, we report two sets of results: one assuming inffnite bandwidth and the
+       other assuming one bank of DDR4 memory at 1200MHz with a total bandwidth of 17GB/s similar
+       to that used in Reference [2].
+         We carefully chose those three CAs out of numerous architectures proposed in the literature
+       to be diverse; the wide variations between them help ensure our analysis of FPGA vs. ASIC efff-
+       ciencyhasbroadapplicability.ThemaindifferencesbetweenthethreeCAs,summarizedinTable1,
+       are:
+          •All three CAs have different parallelization schemes. In other words, the array of MAC units
+            in each CA has a different number of dimensions leading to different execution orders, tiling
+            and unrolling factors for the CONV loops in Algorithm1. Output tiles of size(POM ×POX ×
+            POY ),(POM ×POX ×1),and(POM ×1×1)are produced by the ASU-like, Intel-DLA-like,
+            and Chain-NN-like PE arrays, respectively.
+          •The Intel-DLA-like CA uses a mathematical optimization for CONV layers with kernels of
+            size 3×3 known as the Winograd Transform [22], which reduces the number of MAC op-
+            erations needed to compute convolutions. However, the ASU-like and Chain-NN-like CAs
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:8 A.Boutrosetal.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                     Fig. 2. ASU-like CA tiling schemes and hardware architecture.
+
+            perform conventional sliding-window convolution operations. This enables us to explore
+            different convolution schemes with different degrees of control logic complexity and ob-
+            serve their effect on the area and performance gaps.
+          • The three CAs implement their weight buffers differently. The Chain-NN-like CA stores the
+            kernel weights in small distributed buffers such that every MAC unit has its local scratch-
+            pad for weights implemented in the FPGA’s soft logic (MLABs). In contrast, both the ASU-
+            like and Intel-DLA-like CAs have larger weight buffers implemented using on-chip memory
+            blocks (BRAMs) to feed a group of MAC units. In FC layers, the Intel-DLA-like CA also
+            interchanges the roles of weight and feature buffers.
+          • The CAs differ in whether and how they use double-buffering to hide memory transfer
+            time. The ASU-like CA uses double-buffering for weights to hide the computation time of
+            FC layers by fflling one buffer from off-chip memory while using the weights in the other
+            buffer for computations. The Intel-DLA-like CA uses double-buffering by interchanging
+            input and output buffers after each layer to eliminate any external memory transfers if all
+            the output feature maps of a layer can fft in on-chip buffers. The Chain-NN-like CA does
+            not use any double-buffering techniques.
+         None of the three CAs is available as an open-source implementation, and hence we imple-
+       mented them from scratch to carry out the study presented in this article under controlled condi-
+       tions (e.g., RTL implementation, same FPGA platform, same weight and activation precisions, etc.)
+       to enable fair comparisons and focus only on the architectural aspects of these CAs. In Sections3.1,
+       3.2,and3.3, we describe the details of the three CAs we implemented and any extensions added
+       to them for the sake of our study.
+
+       3.1 ASU-like CA
+       This CA was proposed in Reference [27] by Ma et al. from Arizona State University (ASU) and
+       then expanded in Reference [26] to support the ELTWISE and BNORM layers used in recent CNN
+       models. The core of this CA, shown in Figure2(c), is a three-dimensional MAC unit array of size
+       POM ×POX ×POY that can compute both CONV and FC layers.
+         Feature maps and weights are tiled to minimize external memory transfers by either buffering
+       all weights or all input feature maps in on-chip memory at any layer of the CNN model. In the
+       shallower layers of the network, all the weights but onlyN  +K−1 rows of the input feature OY maps are buffered on-chip such that 0<N  ≤NOY   OY as shown in Figure2(a). In the deeper layers
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:9
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 3. Data re-use shiff register network operation for ASU-like CA withPOX =POY =K=3andPOM =1.
+
+       with smaller input and output feature maps and more weights, all features but onlyN   sets OM of weight kernels are buffered on-chip such that 0<N   ≤NOM   OM asshowninFigure2(b). The
+       on-chip input and weight buffers, all implemented in BRAMs, are organized to supply the MAC
+       units in the convolution engine with enough inputs to keep them busy at every clock cycle. There
+       arePOY input buffers, each of which supplies the MAC units withPOX input features that get
+       multiplied by weights fromPOM different weight buffers as shown in Figure2(c).
+         The convolution engine performs the computation of Loops 1, 2, and 3 in Algorithm1in parallel
+       using the three-dimensional array of MAC units. Each MAC unit sequentially accumulates the
+       results of one kernel (Loops 5 and 6) across all input feature maps (Loop 4) and stores the partial
+       sum locally in the accumulator. This means that afterK×K×NIM cycles, each MAC unit outputs
+       its ffnal result producingPOM ×POX ×POY outputs at the same time. This parallelization scheme
+       hasseveraladvantages;itdoesnotrequireanymovementofpartialsumsaseveryMACunitlocally
+       accumulatestheresultsacrossLoops4,5,and6withouttheneedforcommunicationbetweenMAC
+       units or any intermediate on-chip storage. It also allows ffexible implementation of convolutions
+       of any input feature map count and any kernel size as a result of sequentially executing Loops 4,
+       5, and 6. For example, for any input feature map count, convolutions of size 3×3 and 5×5
+       are executed in 9 and 25 cycles, respectively. The convolution engine is preceded by a complex
+       network ofPOY circular shift registers of size(POX +K−1)each. Figure3shows howPOX ×POY
+       convolution results are computed using this shift register network overK×Ktime steps, where
+       colored boxes are input/output features, white numbered boxes are kernel weights and colored
+       numbered boxes indicate a multiplication operation between an input feature and a kernel weight.
+       At every time step, the multiplication result is accumulated inside the MAC unit and a shift left of
+       the input data is performed. EveryKtime steps a new row is loaded from the input buffers and
+       data is re-arranged and transfered between the circular shift registers as indicated by the dashed
+       arrows in the ffgure. AfterK×Ktime steps, this is repeated forNIM input maps before each MAC
+       unit produces its ffnal result. The convolution engine is followed by an output serializer that takes
+       POM ×POX ×POY results and serializes them overPOY cycles. After the output serializer, there
+       can be a normalization block that is either LRN or BNORM according to the implemented CNN
+       model, then max pooling block and ffnally the output buffers. An optional ELTWISE block is used
+       in the ResNet-50 model.
+
+         Extensions:Both References [27] and [26] originally implement this CA for several CNN mod-
+       els including ResNet-50 and VGG-16. Therefore, they implement all the hardware blocks shown
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:10 A. Boutros et al.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+               Fig. 4. Intel-DLA-like CA and the internal architecture of each processing element.
+
+       in Figure2(c) except for the LRN block used in the AlexNet model. The LRN block is a heavily
+       arithmetic block as it contains squaring, addition, multiplication and exponentiation operations.
+       Since all the DSP blocks are consumed by the convolution engine, we implement all multiplication
+       operations in the LRN block using soft multipliers that are found to be not limiting the maxi-
+       mum operating frequency. We implement the exponentiation operation of Equation (2) using a
+       piecewise-linear function consisting of 20 points that we computed using theαandβvalues from
+       the AlexNet model similar to Reference [42].
+
+       3.2 Intel-DLA-like CA
+       In Reference [2], Intel presented the Deep Learning Accelerator (DLA), which is considered to be
+       the state-of-the-art FPGA accelerator for the AlexNet CNN model. The core of this CA is an array
+       ofPOM processing elements (PEs) connected in a daisy chain scheme where each PE receives input
+       features and passes them to the subsequent PE in the next clock cycle as shown in Figure4.
+         This CA uses double-bufferedstream bufferssuch that input features of a CONV layer are read
+       from one buffer and its outputs are stored in the other one, which then serves as the input buffer
+       for the next layer. The two buffers continue to interchange roles as input and output buffers after
+       every layer without the need to store any intermediate results in external memory. After the last
+       CONV layer, outputs are stored in off-chip memory before starting the computations of FC layers.
+       Each PE contains local weight buffers that feed its dot product units with inputs at every clock
+       cycle. For the FC layers, batch processing is used to allow weight re-use among multiple input
+       features. In contrast to the CONV layers, features of a batch of sizeBinputs are stored in “weight”
+       buffers inside the PEs while the weights are stored in the stream buffers and are passed between
+       the PEs using the daisy chain connection. For our study, we report the results for bothB=1that
+       minimizes latency and can be compared to other CAs that do not support batch processing and
+       B=96 that maximizes throughput and aligns with the reported results in Reference [2].
+         A major feature of this CA is its use of a mathematical optimization known as the Winograd
+       Transform to reduce the number of MAC operations required to compute a convolution [22]. In
+       Reference [2], anF(4×4,3×3)transform is performed using a weight matrix of size 3×3andan
+       input feature matrix of size 6×6 resulting in an output matrix of size 4×4. Equation (4)showsthe
+       Winograd transform and inverse transform for these sizes whereGandBT are used to transform
+       the weight matrixWand the input feature matrixX,respectively, is the element-wise multipli-
+       cation operator and thenAT is used to perform the inverse transform and obtain the output matrix
+       Y. For this CA, the transform of the learned weights is done beforehand for the CONV layers of
+       kernel size 3×3,since they are ffxed after training the model while the transform of input features
+       and inverse transform of the ffnal result cannot be performed in advance and hence are performed
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:11
+
+       on-chip:                                  Y=AT [GWG T ] [BT XB]A,
+                                  ⎡⎢ 1   00⎤⎢ 4        ⎥⎥    ⎡                ⎤⎥⎡                     −1  −1 −1 ⎥    ⎢40−5 010
+             ⎢11 11 10⎤    ⎢ 6   6   6 ⎥    ⎢   4 −4 110⎥⎥⎢               ⎥    ⎢⎢          ⎥    ⎢0 −            ⎥20⎥     −1   1 −1 ⎥    ⎢04−4 −110⎥AT =⎢01−12−⎢               ⎥    ⎢ 6   6   6 ⎥    ⎢                ⎥⎢               ⎥    ⎢⎢          ⎥    ⎢
+             ⎢01 14 40⎥G=  1   1   1 ⎥BT =⎢0 −2 −1 210⎥.  (4)⎥⎢               ⎥    ⎢⎢24   12   6 ⎥    ⎢                ⎥⎣01−18−81⎥⎦    ⎢⎢          ⎥    ⎢02−1 −210⎥⎢ 1  −1   1 ⎥    ⎢                ⎥⎢24   12   6 ⎥    ⎢
+                                  ⎢          ⎥    ⎢040−501⎥⎦⎣ 001⎥    ⎣⎦
+         Each PE in the convolution engine of this CA consists of a buffer for the Winograd-transformed
+       weights,POX dot-product units and their corresponding circular shift registers for storing partial
+       sums. Each dot product unit is pipelined intoLstages and uses the dedicated chain between DSP
+       blocks on the FPGA to multiply and accumulatePIM Winograd features and weights and then
+       store the partial result in a circular shift register (CSR) of sizeLas shown in Figure4. Therefore,
+       each dot product unit can interleave the computation ofLdifferent MACs such that afterLcycles,
+       it takes as an input the partial sum previously produced and adds to it the MAC result of the next
+       PIM features and weights. After allNIM features are processed, the ffnal result is produced and
+       the circular shift register is reset to zeros before starting the processing of the next set of input
+       features. The convolution engine consists ofPOM PEs connected in a daisy chain scheme allowing
+       a better ffoorplan of the design on the FPGA with less fan-out from the input stream buffer to
+       the convolution engine, and thus enabling a higher operating frequency. The convolution engine
+       is followed by an inverse Winograd block that transformsPOX ×POM inputs intoP  ×POX  OM
+       outputs. This is followed by LRN and POOL blocks that processP  ×POX  OM results in parallel
+       before storing them back into the output stream buffer. Both thePOX andP   parameters are OX speciffed to be 6 and 4,respectively, according to the Winograd transform size used. Design space
+       exploration was carried out in Reference [2] to ffnd the optimal values forPIM andPOM and they
+       were chosen to be 8 and 48,respectively.
+         Extensions:This CA was originally implemented for the relatively small AlexNet CNN model
+       in which input and output feature maps can fft in on-chip buffers. This enables the use of inter-
+       changeable input and output buffers that eliminates the need to store any intermediate results in
+       external memory. However, this feature is inapplicable to at least the ffrst layers of the other CNN
+       models used in our study as their feature maps exceed the capacity of on-chip buffers. For this
+       case, we use a scheme similar to that of the ASU-like CA to tile input and output feature maps and
+       store intermediate results in off-chip memory. For layers that have small enough feature maps,
+       we maintain the double buffering technique to eliminate data transfers from and to the external
+       memory. We also carried out an experiment in which we increased the size of stream buffers such
+       that more layers can make use of the double buffering technique. However, this resulted in de-
+       grading the maximum operating frequency of the design, leading to a net loss in performance, and
+       therefore we decided to keep the sizes of the stream buffers the same as that used for the AlexNet
+       model. In addition, we implemented BNORM and ELTWISE blocks for this CA that were not part
+       of the original implementation in Reference [2].
+       3.3 Chain-NN-like CA
+       This CA was proposed in Reference [50] by Wang et al. from Waseda University. It was imple-
+       mented as an ASIC (using TSMC 28nm process technology), speciffcally for accelerating the CONV
+       layers of AlexNet. It uses a dual-channel 1D systolic chain ofNchain PEs to ffexibly compute 2D
+       convolutions of any kernel size. Each PE has a multiplier and a set of input multiplexers controlled
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:12 A. Boutros et al.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+         Fig. 5. Chain-NN CA with(Nchain =16,K=2,Nsub =4)and the internal architecture of each PE.
+
+       by complex central control logic that splits the PE chain intoNsub smaller sub-chains according
+       to the size of the convolution kernel, whereNsub =Nchain /(K×K), as shown in Figure5.We
+       implemented this CA for our study, because, despite being originally proposed as an ASIC imple-
+       mentation, it has compelling resemblance to FPGA architectures that can efffciently implement 1D
+       systolic chains of multipliers using the on-chip hard DSP blocks.
+         This CA separates the input feature maps into odd and even columns and uses two separate
+       input buffers to store them. The two input buffers supply inputs to the ffrst PE of every sub-chain
+       (i.e., the ffrst of every 9, 25, and 121 PEs to implement convolutions of kernel size 3×3, 5×5,
+       and 11×11,respectively). There areNsub−MAX output buffers, each of which stores the outputs
+       produced by a sub-chain whereNsub−MAX =Nchain /(3×3),sincethat3×3 is the smallest kernel
+       size used in AlexNet CONV layers. Each PE in the chain contains both a multiplier and a small local
+       buffer of 512 words for storing the weights needed for the computations performed in this speciffc
+       PE. The largest Arria 10 FPGA contains 3,136 multipliers but only 2,713 BRAMs. We therefore
+       implement the local weight buffers in the soft logic (MLABs) and use the BRAMs to implement
+       input and output feature buffers.
+         Figure5shows the details of the dual-channel PE used in the 1D systolic chain of this CA. The
+       two input channels receive odd-column and even-column input features either from the odd and
+       even input buffers, respectively, if it is the ffrst PE of a sub-chain, or from the channels of the
+       previous PE, otherwise through an input multiplexer. The odd-column and even-column inputs
+       propagate to the next PE after two cycles due to the systolic registers added to the chain. Another
+       odd/even multiplexer chooses the MAC unit input to be either the odd-column or even-column
+       input feature. The MAC unit multiplies the chosen input with the corresponding weight from the
+       local weight buffer and adds the output to the previous partial result from the output buffers if
+       it is the ffrst PE of a sub-chain or to the output of the previous PE otherwise. For a CONV layer
+       with kernel sizeK, the convolution engine produces the partial results of a tile of sizeNOX ×K
+       acrossNsub output feature maps. Then this is repeatedNIM times (Loop 4 in Algorithm1) with
+       the partial results used as inputs to the MAC units of the ffrst PE in each sub-chain to produce the
+       ffnal results of this tile. The next tile of the sameNsub output feature maps is processed in the same
+       manner (Loop 3) until the wholeNOX ×NOY ×Nsub are computed after which the computations
+       of the nextNsub output feature maps (Loop 1) starts.
+         The selection lines for the input multiplexer and output de-multiplexer of each PE are generated
+       by a central control unit and are dynamically changed after each CONV layer according to the
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:13
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+             Fig. 6. Odd-column and even-column input selection schemes forNOX =3andK=3.
+
+       layer’s kernel size. The control logic to choose between odd-column and even-column inputs is
+       explained in Figure6, which shows, as an example, a sub-chain of 9 PEs in the case of a CONV
+       layer withK=3andNOX =3. To compute a tile of sizeNOX ×Koutputs, it requires an input tile
+       of size(NOX +K−1)×(2K−1). The ffgure shows the inputs streamed from the input buffers to
+       the sub-chain at every time step starting from time step 9 when the pipeline is fflled. Input features
+       from the even-column buffer lag behind those from the odd-column buffer byKcycles as shown
+       in the ffrst time step in Figure6. After streaming a complete column of the input tile (2K−1 input
+       features), no new inputs are fed into the pipeline for the next time step after which features from
+       the next column of same type (odd or even) are fed into the sub-chain. The thick boxes in Figure6
+       show the odd/even selection for each PE in every time step. At any time step, the input selections
+       alternate between odd and even for everyKPEs in the sub-chain. After everyKtime steps the
+       selections are toggled to form all the convolution windows required.
+         Extensions:Since it was originally proposedas an ASIC architecture only for CONV layers, we
+       migrated and optimized this CA for FPGAs and added POOL, LRN, BNORM and ELTWISE blocks
+       that were not part of the original implementation in Reference [50]. The POOL block buffers the
+       ffnal results of theNsub output feature maps until a pooling window is ready to be computed.
+       The LRN block operates on results ofKN adjacent maps and the BNORM and ELTWISE blocks
+       operate on single results separately so their integration to this CA was straightforward. Since the
+       other two CAs compute both CONV and FC layers using the same hardware, to provide a fair
+       comparison, we extended this CA by mapping both the 1×1 CONV layers used in ResNet-50
+       and the FC layers to its convolution engine instead of implementing a dedicated engine for those
+       layers. Unlike the conventional CONV layers, each output feature in this layers is the result of a
+       dot-product of two vectors. Therefore, we use sub-chains of size 9 PEs as dot-product units that
+       multiply and accumulate an input feature vector withNsub weight vectors to produceNsub partial
+       results in parallel. The main drawbacks of this approach is that it does not exploit the dual-channel
+       architecture and the complex control logic, since there is no need to arrange data in convolutional
+       windows as previously explained. Also, the effective efffciency of the PEs is signiffcantly degraded
+       when executing these layers due to wasting the majority of cycles fflling and ffushing the pipeline
+       of the systolic sub-chain to produce the result of one dot-product.
+
+       4 METHODOLOGY
+       We implement the three CAs described in Section3using parameterizable SystemVerilog, in which
+       we specify the CA variation to be BSC, LRN, or ELT, which is the notion we will use for the rest of
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:14 A. Boutros et al.
+
+                         Table 2. CA Parameters and Experimental Setup
+        Feature/Weight Precision   16-bit/8-bit ffxed point
+        ASU-like Parameters      POX =POY =14,POM =16
+        Intel-DLA-like Parameters  PIM =8,POX =6,P  =4,POX    OM =48
+        Chain-NN-like Parameters  Nchain =2904 (LRN),Nchain =2304 (BSC and ELT)
+        ASIC Process Technology   28 nm STMicroelectronics standard-cell libraries
+        ASIC Design Corner       worst-case, 1.0V, 125°C
+        ASIC CAD              Synopsys Design Compiler 2013.03 and Cadence Innovus 16
+        FPGA Device            20nm Intel Arria 10 GX 1150 (10AX115N2F45I1SG)
+        FPGA Design Corner      slowest, 0.95V, 100°C
+        FPGA CAD              Intel Quartus Prime 17.00
+
+       the article to refer to CAs that implement VGG-16, AlexNet, and ResNet-50 CNN models, respec-
+       tively. The variations of each CA contain only the blocks required for each of their corresponding
+       CNN models. For instance, the BSC variation will not contain LRN, BNORM, or ELTWISE blocks as
+       there are no normalization or elementwise layers in the VGG-16 model. For all the CAs, we use 16-
+       bit and 8-bit ffxed-point features and weights, respectively. For the ASU-like and Intel-DLA-like
+       architectures, we use the same parameters reported in References [27] and [2]. For the Chain-
+       NN-like CA, since it was originally implemented as an ASIC, the parameters used in Reference
+       [50] will leave most of the FPGA’s DSP blocks unutilized. Therefore, we assigned the number of
+       PEs (Nchain ) to be the minimum value that achieves the highest performance given the available
+       DSP block count constraint. As an example, for an Arria 10 device with 3,036 hard multipliers,
+       in case of VGG-16 that has 3×3 CONV layers with 512 output channels, we can fft a maximum
+       of 3,036÷(3×3) =337 sub-chains that occupy 3,033 multipliers and compute this CONV layer
+       in 512÷337 =2 rounds. However, we can use only 2,304 hard multipliers (i.e. 256 sub-chains)
+       instead, which computes the same layer also in 2 rounds but uses fewer DSP blocks and does not
+       affect the performance of other layers as well. Table2summarizes the experimental setup and the
+       parameters used in each CA.
+         We optimize the performance of the three CAs implemented on the FPGA to achieve the highest
+       possible operating frequency for each one. We then migrate the exact same RTL implementations
+       to ASICs using the same architecture parameters indicated in Table2. One might argue that an
+       optimized ASIC design can achieve higher performance by, for example, building custom highly
+       efffcient inter-PE network-on-chip such as in Reference [4] or fftting signiffcantly more MACs on-
+       chip [19]. However, the purpose of this study is not to benchmark FPGAs vs. ASICs in accelerating
+       CNN inference, but rather highlight the bottlenecks of current FPGA architectures when imple-
+       menting those CAs. Therefore, the ASIC implementations in this study serve as an upper-bound
+       on the performance and area-efffciency of FPGA-optimized CNN accelerators where all the FPGA
+       programmability has been removed. Comparing the same CAs on FPGAs and ASICs enables us
+       to quantify the effect of FPGA programmability on the performance and area of those CAs and
+       pinpoint the causes of this gap in current FPGA architectures; this would not be possible if we
+       instead compared existing ASIC implementations to totally different state-of-the-art FPGA ones.
+
+       4.1 Performance Modeling
+       To obtain the performance results of the three CAs, we build analytical performance models based
+       on our RTL simulations that calculate the number of cycles required for the computation of each
+       layer as well as the time required for any necessary memory transfers of weights and features.
+       We assume that the layout of the features and weights in the external memory is optimized for
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:15
+
+
+
+
+
+
+
+
+
+             Fig. 7. Processing time breakdown of one image for the LRN variation of the three CAs.
+
+       the parallelization schemes of each CA, which allows us to utilize the burst capabilities and all
+       the external memory bandwidth available. Given a high-level description of the CNN model, the
+       operating frequency of the accelerator, the bit-widths of weights/features, and the available exter-
+       nal memory bandwidth, our performance models produce the computation and memory transfer
+       time required for each layer of the CNN. Our performance models assume either a single bank of
+       DDR4x64 memory at 1,200MHz (for a total bandwidth of 17GB/s) or unlimited bandwidth to obtain
+       effective performanceandcomputational performanceresults, respectively. As an example, Figure7
+       shows the performance model output for AlexNet on the three CAs. We then use this output to
+       calculate the throughput in GOPS counting each MAC as two operations (i.e., a multiplication and
+       an addition). We veriffed our performance models against the results reported in References [27]
+       and [2], and we found that our models align well with the published results.
+
+       4.2 ASIC Flow
+       For the ASIC implementations, we use Synopsys Design Compiler 2013.03 to synthesize the CAs
+       using 28nm STMicroelectronics standard-cell libraries; we target an unachievable clock period
+       of 0ns to achieve the highest possible frequency and then perform area recovery by setting the
+       maximum area to 0 and carrying out an incremental compilation. The standard-cell library comes
+       with a wide variety of variations for different processes, voltages and operating temperatures, from
+       which we choose the 1.0V, 125°C, and worst-case process corner for our experiments.
+         Memory Compiler:We use COFFE’s memory compiler [46] to generate on-chip memories for
+       our ASIC implementations. Although this memory compiler was previously used to design FPGA
+       BRAM blocks, it is capable of designing custom memory blocks for ASICs with any required word
+       size and depth, without any FPGA-speciffc circuitry. The memory cell layout as well as the veri-
+       ffcation of its area and timing results against state-of-the-art industrial and academic designs are
+       detailed in Reference [46]. Our experiments also show that the area of memory blocks generated
+       by COFFE’s memory compiler align well with that generated by the OpenRAM [12]memorycom-
+       piler for memories having different word sizes and depths. The ASIC CAs have the ffexibility to
+       implement on-chip memories of the required size and type (i.e., simple or dual port) unlike the
+       FPGA implementations, which are constrained by the ffxed size of BRAM blocks.
+         Place and Route Correction Factors:Using synthesis-only resultsfor ASIC designs can over-
+       estimate frequency and underestimate area as it only predicts routing effects. However, pushing all
+       nine designs that we implemented through multiple iterations of the place-and-route ffow proved
+       computationally infeasible due to the very high runtime of such large designs and the limited tool
+       licenses available. However, we exploit the modular nature of the three architectures and place
+       and route smaller instances of the CAs with fewer PEs ( 1 /8 to 1 /4 of the full size designs) to obtain
+       correction factors for our synthesis-only results of the full-size CAs. We use Cadence Innovus 16
+       to place and route our designs. Our experiments show that the frequency achieved in synthesis is
+       degraded after placement and routing by factors of 0.65, 0.74, and 0.73 for the ASU-like, Intel-DLA-
+       like, and Chain-NN-like CAs, respectively. We observed that the area of the CAs scale linearly and
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:16 A. Boutros et al.
+
+                  Table 3. Frequency, Effective Performance, and Image Processing for the
+                            FPGA Implementations of Different CAs
+        CA                   ASU-like      Intel-DLA-like    Chain-NN-like
+        Variation           BSC  LRN ELT  BSC  LRN ELT BSC LRN  ELT
+        Frequency (MHz)     266   216  258  339   336  345  186  197   188
+        Eff. Perf. (GOPS)     1,077  303  580  1,660  307  620  423  128   54
+        Processing Time (ms)  27.2   4.8  13.3  16.1   4.5  10.5  73.1  11.4  143.5
+       BSC, LRN, and ELT CA variations implement the VGG-16, AlexNet, and ResNet-50, respectively. The Intel-DLA-like results
+       are with batch size 1.
+       that the correction factors are consistent across different sizes of the CAs, as we expected given
+       the modular nature of these architectures, and this increases our conffdence in the correction fac-
+       tors. We also needed to bloat the area of the ASIC implementations by 5% for ASU-like and 11%
+       for both Intel-DLA-like and Chain-NN-like architectures to achieve a successful routing that met
+       timing. We apply those correction factors to our synthesis-only results to obtain more accurate
+       and realistic area and performance numbers for the placed and routed ASIC implementations.
+
+       4.3 FPGA Flow
+       For the FPGA implementations, we use Intel Quartus Prime 17.0 to synthesize, place and route the
+       three variations of each CA for the largest and fastest speed-grade Arria 10 device. The function-
+       ality of all the designs is veriffed using ModelSim Intel FPGA Starter Edition 10.5b. To estimate
+       the area occupied by the CAs on the FPGA, we ffrst convert all the utilized resources to equivalent
+       ALMs (eALMs). It is reported in Reference [34] that the costs of an M20K block and a DSP block
+       in Stratix V architecture are 40 and 30 eALMs, respectively. For the Arria 10 architecture, which
+       uses the same M20K blocks as Stratix V, we use the same cost for BRAMs; however, we account for
+       the 10% increase in DSP block area compared to Stratix V due to adding support for ffoating-point
+       arithmetic [21] leading to a DSP block cost of 33 eALMs. After that, we use the publicly available
+       area of the 65 nm Stratix III ALM [53] and scale it down to 28nm to get an area estimate in squared
+       millimeters that is comparable to the area of the ASIC implementations. Although the ALM ar-
+       chitecture has only minor changes from Stratix III to Arria 10, we believe that the area results of
+       the FPGA implementations in squared millimeters can still be optimistic, since we assume ideal
+       scaling from 65 to 28nm. However, we are most interested in relative trends in our area gap anal-
+       ysis, which can help us identify the blocks that have relatively higher gap than others, rather than
+       ffnding the absolute area results in squared millimeters with high accuracy.
+
+       5 RESULTS
+       In this section, we ffrst compare the FPGA implementations of the different variations of the three
+       CAs in terms of performance, resource utilization, and area breakdown. Then, we study the per-
+       formance and area gap compared to the ASIC implementations. Finally, we analyze these results
+       and suggest FPGA architectural changes to achieve more efffcient CNN inference acceleration.
+
+       5.1 FPGA Results
+       Table3summarizes the maximum frequency and the processing time of one image and Figure8(a)
+       shows the performance results in TOPS for all variations of the three CAs. We show the perfor-
+       mance results of the Intel-DLA-like CA in case of both processing a batch of sizeB=96 images,
+       similar to what was reported in Reference [2], andB=1 similar to the other CAs. Besides using
+       the Winograd transform that signiffcantly reduces the amount of required operations and reduc-
+       ing external memory transfers by using double-buffered stream buffers, the Intel-DLA-like CA also
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:17
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            Fig. 8. FPGA Results: (a) Performance in TOPS. (b) Resource utilization. (c) Area breakdown.
+
+       achieves the highest frequency because of its pipelined daisy-chain architecture that allows an op-
+       timized placement of the PEs with less fan-out from the feature/weight buffers to the PEs when
+       compared to the other CAs. Therefore, the Intel-DLA-like CA achieves the highest performance
+       with 1.54×and 1.07×more TOPS than that achieved by the ASU-like CA (which uses more PEs)
+       for the BSC and ELT and LRN variations, respectively, in case of a single image inference.
+         The Intel-DLA-like CA has the highest advantage over the ASU-like-CA in the BSC variation,
+       since all the CONV layers of VGG-16 are of size 3×3 that benefft the most from the Winograd
+       transform. This advantage decreases in the ELT variation as the ratio of 3×3 CONV layers to all
+       layers decreases in ResNet-50, and we cannot fully make use of the double-buffering technique due
+       to the ELTWISE layers that require storing intermediate results to the external memory. However,
+       despite the signiffcantly higher performance reported in Reference [2] in case of batch processing
+       of FC layers, it achieves slightly more TOPS when compared to the ASU-like CA in case of single
+       image inference using AlexNet. Figure8(a) also shows that the gains from batch processing (4.2×
+       and 1.8×more TOPS in the LRN and BSC variations, respectively) almost vanishes in ELT, since
+       the ResNet-50 model has only one small FC layer compared to three larger FC layers in AlexNet
+       and VGG-16.
+         The Chain-NN-like CA has the lowest performance results in all variations, since it runs at a sig-
+       niffcantly lower frequency than the other CAs. We believe that this is due to the high utilization of
+       the FPGA’s soft fabric (between 74%–77% as shown in Figure8(b)), leading to physically stretched
+       critical paths. The large fan-out from the odd/even input buffers to the ffrst PE of all sub-chains
+       and the large multiplexers used for selecting the outputs of sub-chains for different convolution
+       sizes (i.e., selecting between every 9th, 25th, 49th, or 121st PE for CONV layers of sizeK=3,5,7,
+       or 11,respectively) also negatively affect the frequency. Finally, the performance of this CA is sig-
+       niffcantly degraded in FC layers and 1×1 CONV layers, since it was originally implemented for
+       accelerating only the CONV layers as explained in Section3.3.
+         Figure8(b) shows the percentage utilization of ALMs, M20K BRAM blocks, and DSP blocks for
+       each CA variation. The highest utilization percentage in most cases is for the DSP blocks, which
+       are the core of the convolution engine in all CAs. The ASU-like CA uses all the 1,518 DSP blocks
+       (3,03618-bitmultipliers)toimplementthethree-dimensionalarrayofMACunitsinitsconvolution
+       engine and off-loads 100 MAC units to the FPGA’s soft fabric. The BSC and ELT variations of the
+       Intel-DLA-like CA use 91% of the DSP blocks, 224 of which are used for the Winograd transform
+       and inverse transform, while 1,152 blocks are used to implement the dot product units in its PEs. In
+       addition, its LRN variation uses the remaining DSP blocks to implement some of the multiplication
+       operations of the LRN layers. The Chain-NN CA uses signiffcantly more soft logic, because it
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:18 A. Boutros et al.
+
+                                                 Table 4. Summary of Area and
+                                                    Performance Ratios
+
+                                             Var    CA     AR 1  CPR 2  EPR 3
+                                                   ASU    9.38   4.44   2.09
+                                                 Intel-DLA   7.87   2.83   1.26BSC  Chain-NN   8.16   6.33   3.63
+                                                   ASU    11.02  4.63   1.25
+                                                 Intel-DLA   8.48   2.91   1.15LRN  Chain-NN   8.38   5.98   2.29
+                                                   ASU    9.48   4.58   2.08
+                                                 Intel-DLA   7.93   2.82   1.5ELT  Chain-NN   8.27   6.26   5.35
+                                                Geomean    8.73  4.31  2.01
+                                            1 Area Ratio (FPGA/ASIC).
+                                            2 Computational Performance Ratio (ASIC/FPGA).
+                                            3 Effective Performance Ratio (ASIC/FPGA).
+              Fig. 9. Area and performance gaps.
+       implements the weight buffers as distributed memories in MLABs. In Figure8(c), we show the
+       area in squared millimeters estimated according the methodology of Section4.3and its breakdown
+       for all the CAs. With the exception of the Chain-NN-like CA that uses a signiffcant amount of
+       the soft fabric to implement weight buffers, the area of the two other CAs is dominated by the
+       computational blocks such as the convolution, pooling and normalization blocks. In the Intel-
+       DLA-like CA, the Winograd transform and inverse transform blocks contribute to the total area
+       by 29–33%, which is almost as expensive as the convolution engine, which consumes 32–37% of
+       the total area.
+
+
+       5.2 Performance Gap
+       Figure9illustrates the area and computational performance gap between the FPGA and ASIC
+       implementations of the three variations of each CA. The FPGA implementations are represented
+       as triangles while the ASIC implementations are represented as squares. The colors and patterns of
+       the data points represent the variation and the CA, respectively, and the dotted lines connect each
+       FPGA implementation to its ASIC counterpart. The closer the data point is to the upper left corner
+       ofthegraph,thebetteritisasitwillhavesmallerareaandhigherperformance.Table4summarizes
+       the FPGA-to-ASIC area ratios as well as the computational performance and effective performance
+       ASIC-to-FPGA ratio for each CA variation. The computational performance ratio (CPR) represents
+       the performance gap between the FPGA and ASIC implementations assuming inffnite external
+       memory bandwidth. However, the effective performance ratio (EPR) represents the performance
+       gap assuming a single-bank external memory interface as speciffed previously. We believe that
+       the computational performance ratio better captures the cost of FPGA programmability and its
+       effect on the computational core performance of the three CAs as it is not limited by a relatively
+       low-performance external memory interface. The values of EPR are less than those of the CPR as
+       shown in Table4due to the external memory bandwidth constraints. As the performance of the
+       computational engine increases, the CAs can use multiple DDR memory banks or high-bandwidth
+       memory to enhance the overall performance. Therefore, EPR and CPR represent lower and upper
+       bounds for design points using different external memory systems. Since the main focus of this
+       work is studying the computational gap caused by the FPGA programmability, we believe that the
+       CPR is the more important metric.
+
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:19
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 10. Area gap between FPGA and ASIC implementations for different blocks of: (a) BSC, (b) LRN, and
+       (c) ELT. The percentages represent the contribution of each component to the total area of the FPGA
+       implementation.
+
+         Interestingly, the computational performance gap is not consistent among different CAs; how-
+       ever different variations of the same CA have similar gap results. The Intel-DLA-like CA has
+       the smallest ASIC-to-FPGA computational performance ratio (≈2.9) compared to the ASU-like
+       and Chain-NN-like CAs (≈4.6 and 6.2,respectively). We believe that the reason is that the Intel-
+       DLA-like CA has a modular daisy-chain architecture, which is more routing-friendly and bene-
+       ffts the FPGA implementation more than the ASIC one due to the relatively slow speed of FPGA
+       routing.
+
+       5.3 Area Gap
+       On average, the FPGA implementations have 8.7×larger area than their ASIC counterparts and
+       the gap is, in contrast to the performance gap, fairly similar across different variations of the three
+       CAs. To understand the reasons for this gap, Figures10(a),10(b), and10(c) illustrate the area ratio
+       of different components in the FPGA implementations to those in the ASIC implementations for
+       the BSC, LRN, and ELT variations, respectively. The percentages written above the bars represent
+       the area breakdown of each FPGA implementation into different components and hence indicate
+       the contribution of each component to the overall area gap. We notice that the convolution engine,
+       which has the largest contribution to total area (up to 60% in some cases) and thus the strongest
+       impactonthetotalareagap,hasanFPGA-to-ASICareaarearatiorangingfrom13to31fordifferent
+       variations of the three CAs. The Intel-DLA-like uses Winograd transform to signiffcantly reduce
+       MAC operations in convolution, which costs almost the same area as the convolution engine in the
+       FPGA implementation. However, the Winograd transform and inverse transform blocks in this CA
+       have FPGA-to-ASIC area ratios of 28 and 26, respectively, which are almost twice the area gap for
+       the convolution engine, since they contain a large number of multi-input adders implemented in
+       the FPGA’s soft fabric compared to the convolution engine, which is mostly implemented in hard
+       DSP blocks. The smallest area gap is in the feature and weight buffers, since the RAMs in the FPGA
+       and the ASIC implementations are both custom SRAM blocks. However, the buffers area ratios are
+       still signiffcant (≈3–5)because of the area overhead of the programmable routing in BRAM tiles
+       as well as the underutilization of some of the M20K blocks on the FPGA, whereas in the ASIC
+       implementations, we use memories with the exact required sizes. The NORM block has an area
+       ratio of 32 and 28 and consumes 22% and 14% of the total area in ASU-like and Intel-DLA-like CAs,
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:20 A. Boutros et al.
+
+       respectively, since it is a heavily arithmetic block and is mostly implemented in the soft fabric.
+       However, it only consumes 3% of the total area in the Chain-NN-like CA, which produces outputs
+       in one dimension only and therefore does not normalize output features at different locations in
+       parallel. The POOL, ELTWISE and BNORM blocks have large area ratios, however they have small
+       overall areas and hence limited impact on the total gap.
+         An interesting observation is that the area gap in the convolution engine of the Intel-DLA-like
+       CA is signiffcantly less than that of the other two CAs: an area ratio of 13 compared to 20 and
+       29 in ASU-like and Chain-NN-like CAs, respectively. This is because the Intel-DLA-like CA uses
+       the hard adders in the DSP blocks to implement its dot-product unit, while the other two CAs
+       pay for the area of the complete DSP block on the FPGA but only make use of the multipliers
+       inside it and thus have a higher area gap compared to their ASIC counterparts. This observation
+       motivates the investigation of new DSP block designs that could bring more of the convolution
+       engine functionality inside the hard DSP block. For instance, the ASU-like CA needs two separate
+       accumulators for the two independent 18-bit multipliers, which is not supported in current DSP
+       blocks. Hence, the DSP block accumulators are wasted and soft logic is used to implement the
+       accumulators. The convolution engine of the Chain-NN-like CA has the highest area gap as it
+       implements input multiplexing, accumulation, and output de-multiplexing in the soft fabric.
+
+       5.4 Architectural Insights
+       Based on the results of Sections5.1and5.2, we can draw several architectural insights:
+
+          • According to the resource utilization results in Figure8(b), the limiting factor is the DSP
+            block count available on-chip, with close to 100% resource utilization in most cases. One
+            direct approach to gain higher performance is adding more DSP blocks to current FPGAs,
+            especially given that a DSP-focused device spends only 5% of its core area on DSP blocks
+            [21]. This requires a careful architectural study to determine the optimal ratio and area
+            distribution between DSPs, BRAMs, and ALMs for DL-tuned FPGAs that are still ffexible
+            enough and suitable for other applications as well. These architectural explorations require
+            a suite of DL benchmark circuits such as the one we developed in this work, and which we
+            plan to expand and open-source in future work.
+          • AsshowninFigure10, the area gap of the convolution engine of the Intel-like-DLA CA is
+            signiffcantly less than that of the other two CAs, since it makes better use of the DSP block
+            available functionalities such as the internal adders and hard cascade chains. By looking
+            at the ASIC area breakdown of the convolution engine, we can see that about 72% of the
+            logic in the convolution engine of the Intel-DLA-like CA was implemented inside hard DSP
+            blocks on the FPGA compared to only 32% and 35% in the ASU-like and Chain-NN-like CAs,
+            respectively, and the rest is implemented in the soft fabric. We believe that small changes to
+            the DSP block architecture could capture more of the convolution engine hardware inside
+            the hard circuitry of the DSP block. For example, adding an operation mode that conffgures
+            the two internal adders as independent accumulators for two independent 18-bit MACs
+            (such as in the ASU-like CA) or having a small circular shift register accumulator for inter-
+            leaving dot-product operations (as in the Intel-DLA-like CA) would save soft logic. Neither
+            of the DSP block enhancements would add much logic to the block, nor would they require
+            more block routing ports (inputs and outputs) and, therefore, the DSP block area increase
+            would be minimal. To increase the DSP block count on-chip, as mentioned in our ffrst sug-
+            gestion, we not only wish to avoid signiffcant block area increase, but also remove DSP
+            block functionalities that are unnecessary for DL applications and would not cause severe
+            performance degradation when implemented in the soft fabric. For example, removing the
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:21
+
+            built-in constant coefffcient banks in the Arria 10 DSP blocks should be evaluated as they
+            are not usable by any of our CAs.
+          •In this study, we used 16- and 8-bit ffxed-point precision for features and weights, respec-
+            tively, in all CAs to ensure fair comparisons. However, the most suitable precision for CNN
+            inference is debatable and varies widely in the literature from single-precision ffoating-
+            point down to ternary and binary [28]. Currently, DSP blocks from Intel and Xilinx support
+            a limited number of precisions. For instance, a DSP block in Intel Arria 10, and similarly
+            Stratix 10, FPGAs supports two 18-bit, one 27-bit, or one single-precision ffoating-point
+            multiplication. However, a DSP slice in Xilinx Virtex Ultrascale FPGAs supports one 27×18
+            multiplication. Designers can sometimes fft more low-precision multiplies that match cer-
+            tain patterns using clever tricks such as performing two 8-bit multiplies that share one
+            operand using a single Xilinx DSP slice [8]. Even with these operand packing tricks, using
+            lower precision leaves a portion of the DSP block logic idle. We can avoid this by designing
+            DSP blocks that natively support low-precision multiplications and reuse routing ports and
+            multiplier sub-arrays to keep the area overhead minimal.
+          •When implementing the three CAs, we noticed that the required on-chip buffers are either
+            deep central buffers for input and output features or smaller and more distributed buffers
+            for the weights. When we tried to extend the double-buffering technique used in the Intel-
+            DLA-like CA to more layers of models larger than AlexNet by implementing deeper stream
+            buffers, it resulted in a net performance degradation as the operating frequency dropped
+            signiffcantly due to depth stitching of M20K BRAMs to implement those deep buffers. How-
+            ever, when implementing the small weight buffers of the Chain-NN-like CA in MLABs, the
+            high utilization of the soft fabric also resulted in lower operating frequency. This observa-
+            tion indicates that having only M20K BRAMs and MLABs to implement on-chip memories
+            might not be a good fft for DL acceleration on FPGAs. This also requires a more detailed ar-
+            chitectural study to determine the best size and ratio of on-chip BRAMs and their effect on
+            the overall performance using DL-representative benchmarks, and we believe our parame-
+            terized CAs can form the start of this benchmark set. In addition, the memory-richness of
+            FPGAs can be enhanced by employing emerging technologies such as Magnetic Tunneling
+            Junction memories, which can provide bigger yet more dense BRAMs for memory-intensive
+            applications as shown in Reference [54].
+
+       6 CONCLUSION
+       In this article, we implemented three highly optimized state-of-the-art CAs for accelerating CNN
+       inference, which are: ASU-like, Intel-DLA-like, and Chain-NN-like CAs. We implemented three
+       variations of each CA (BSC, LRN, and ELT) for three different CNN models (VGG-16, AlexNet, and
+       ResNet-50, respectively) on an Intel Arria 10 FPGA device and compared them to 28nm ASIC im-
+       plementations of the same CAs to quantify the programmability cost that comes with using FPGAs
+       on the performance and area of DL accelerators. Across different variations of the three CAs, we
+       observed a consistent area gap with an average FPGA-to-ASIC area ratio of 8.7×, to which the con-
+       volution engine contributes the most with area ratios ranging from 13 to 31 for different CAs. The
+       performance gap, unlike the area gap, varies signiffcantly across different CAs. The computational
+       performance of the ASIC implementations is 2.8×to 6.3×faster than that of the FPGA imple-
+       mentations when assuming inffnite external memory bandwidth. We ffnd that the Intel-DLA-like
+       CA has the smallest performance gap compared to its ASIC counterpart indicating that focusing
+       on modular and routing-friendly designs is of great importance for building efffcient FPGA-based
+       DL accelerators. Finally, we suggest several FPGA DSP and RAM architecture changes for future
+
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       20:22 A. Boutros et al.
+
+       work that could reduce the area and performance gaps and enable more efffcient DL acceleration
+       on FPGAs.
+
+       ACKNOWLEDGMENTS
+       TheauthorsthankMartinLanghammer,DebbieMarr,andErikoNurvitadhiforhelpfuldiscussions,
+       as well as Huawei, Intel, and NSERC for funding support.
+
+       REFERENCES
+        [1] M. Abadi et al. 2016. TensorFlow: A system for large-scale machine learning. InProceedings of the OSDI. 265–283.
+        [2] U. Aydonat et al. 2017. An OpenCL (TM) deep learning accelerator on Arria 10. InProceedings of the FPGA. 55–64.
+        [3] Y. Chen et al. 2014. DaDianNao: A machine-learning supercomputer. InProceedings of the MICRO. 609–622.
+        [4] Y. Chen et al. 2017. Eyeriss: An energy-efffcient reconffgurable accelerator for deep convolutional neural networks.
+          InProceedings of the JSSC, Vol. 52. 127–138.
+        [5] S. Chetlur et al. 2014. CuDNN: Efffcient primitives for deep learning.arXiv:1410.0759.
+        [6] E. Chung and J. Fowers. 2017. Accelerating persistent neural networks at datacenter scale. InProceedings of the HOT
+          CHIPS,Vol.29.
+        [7] F. Colombo et al. 2017. Deep artiffcial composer: A creative neural network model for automated melody generation.
+          InProceedings of the EvoMUSART. 81–96.
+        [8] Y. Fu et al. 2016. Deep learning with INT8 optimization on Xilinx devices. Inwhite paper of Xilinx.
+        [9] L. Gatys et al. 2015. A neural algorithm of artistic style.arXiv:1508.06576.
+       [10] A. Graves et al. 2013. Speech recognition with deep recurrent neural networks. InProceedings of the ICASSP. 6645–
+          6649.
+       [11] Y. Guan et al. 2017. FP-DNN: An automated framework for mapping deep neural networks onto FPGAs with RTL-HLS
+          hybrid templates. InProceedings of the FCCM. 152–159.
+       [12] Matthew R. Guthaus et al. 2016. OpenRAM: An open-source memory compiler. InProceedings of the ICCAD.
+       [13] P. Gysel et al. 2016. Hardware-oriented approximation of convolutional neural networks.arXiv:1604.03168.
+       [14] K. He et al. 2015. Delving deep into rectiffers: Surpassing human-level performance on ImageNet classiffcation. In
+          Proceedings of the ICCV. 1026–1034.
+       [15] K. He et al. 2016. Deep residual learning for image recognition. InProceedings of the CVPR. 770–778.
+       [16] S. Herculano-Houzel. 2009. The human brain in numbers: A linearly scaled-up primate brain. InFrontiers in Human
+          Neuroscience,Vol.3.
+       [17] S. Ioffe and C. Szegedy. 2015. Batch normalization: Accelerating deep network training by reducing internal covariate
+          shift. InProceedings of the ICML. 448–456.
+       [18] Y. Jia et al. 2014. Caffe: Convolutional architecture for fast feature embedding.arXiv:1408.5093.
+       [19] N. Jouppi et al. 2017. In-datacenter performance analysis of a tensor processing unit. InProceedings of the ISCA. 1–12.
+       [20] A. Krizhevsky et al. 2012. ImageNet classiffcation with deep convolutional neural networks. InProceedings of the
+          NIPS. 1097–1105.
+       [21] M. Langhammer and B. Pasca. 2015. Floating-point DSP block architecture for FPGAs. InProceedings of the FPGA.
+          117–125.
+       [22] A. Lavin and S. Gray. 2016. Fast algorithms for convolutional neural networks. InProceedings of the CVPR. 4013–4021.
+       [23] Z. Liu et al. 2016. Automatic code generation of convolutional neural networks in FPGA implementation. InProceed-
+          ings of the FPT. 61–68.
+       [24] L. Lu et al. 2017. Evaluating fast algorithms for convolutional neural networks on FPGAs. InProceedings of the FCCM.
+          101–108.
+       [25] Y. Ma et al. 2016. Scalable and modularized RTL compilation of convolutional neural networks onto FPGA. InPro-
+          ceedings of the FPL.1–8.
+       [26] Y. Ma et al. 2017. An automatic RTL compiler for high-throughput FPGA implementation of diverse deep convolu-
+          tional neural networks. InProceedings of the FPL.1–8.
+       [27] Y. Ma et al. 2017. Optimizing loop operation and dataffow in FPGA acceleration of deep convolutional neural net-
+          works. InProceedings of the FPGA. 45–54.
+       [28] A. Mishra et al. 2017. WRPN: Wide reduced-precision networks.arXiv:1709.01134.
+       [29] E. Nurvitadhi et al. 2016. Accelerating binarized neural networks: Comparison of FPGA, CPU, GPU, and ASIC. In
+          Proceedings of the FPT. 77–84.
+       [30] K. Ovtcharov et al. 2015. Accelerating deep convolutional neural networks using specialized hardware. InMicrosoft
+          Research Whitepaper,Vol.2.
+
+       ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.       FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference 20:23
+
+       [31] A. Prost-Boucle et al. 2017. Scalable high-performance architecture for convolutional ternary neural networks on
+          FPGA. InProceedings of the FPL.1–7.
+       [32] A. Putnam et al. 2014. A reconffgurable fabric for accelerating large-scale datacenter services. InProceedings of the
+          ISCA. 13–24.
+       [33] J. Qiu et al. 2016. Going deeper with embedded FPGA platform for convolutional neural network. InProceedings of
+          the FPGA. 26–35.
+       [34] R. Rashid et al. 2014. Comparing performance, productivity and scalability of the TILT overlay processor to OpenCL
+          HLS. InProceedings of the FPT. 20–27.
+       [35] D. E. Rumelhart et al. 1985.Learning Internal Representations by Error Propagation. Technical Report.
+       [36] O. Russakovsky et al. 2015. Imagenet large scale visual recognition challenge. InProceedings of the IJCV, Vol. 115.
+          211–252.
+       [37] H. Sharma et al. 2016. From high-level deep neural models to FPGAs. InProceedings of the MICRO. 1–12.
+       [38] F. Shen et al. 2016. Weighted residuals for very deep networks. InProceedings of the ICSAI. 936–941.
+       [39] Y. Shen et al. 2016. Overcoming resource underutilization in spatial CNN accelerators. InProceedings of the FPL.1–4.
+       [40] Y. Shen et al. 2017. Maximizing CNN accelerator efffciency through resource partitioning. InProceedings of the ISCA.
+          535–547.
+       [41] D. Silver et al. 2017. Mastering the game of go without human knowledge. InNature, Vol. 550. 354–359.
+       [42] N. Suda et al. 2016. Throughput-optimized OpenCL-based FPGA accelerator for large-scale convolutional neural
+          networks. InProceedings of the FPGA. 16–25.
+       [43] A. Suleiman et al. 2017. Towards closing the energy Gap between HOG and CNN features for embedded vision.
+          arXiv:1703.05853.
+       [44] I. Sutskever et al. 2014. Sequence to sequence learning with neural networks. InProceedings of the NIPS. 3104–3112.
+       [45] C. Szegedy et al. 2015. Going deeper with convolutions. InProceedings of the CVPR.
+       [46] Kosuke Tatsumura et al. 2016. High density, low energy, magnetictunnel junction based block RAMs for memory-rich
+          FPGAs. InProceedings of the FPT. 4–11.
+       [47] Y. Umuroglu et al. 2017. FINN: A framework for fast, scalable binarized neural network inference. InProceedings of
+          the FPGA. 65–74.
+       [48] S. Venieris and C. Bouganis. 2016. fpgaConvNet: A framework for mapping convolutional neural networks on FPGAs.
+          InProceedings of the FCCM. 40–47.
+       [49] G. Venkatesh et al. 2017. Accelerating deep convolutional networks using low-precision and sparsity. InProceedings
+          of the ICASSP. 2861–2865.
+       [50] S. Wang et al. 2017. Chain-NN: An energy-efffcient 1D chain architecture for accelerating deep convolutional neural
+          networks. InProceedings of the DATE. 1032–1037.
+       [51] Y. Wang et al. 2016. DeepBurning: Automatic generation of FPGA-based learning accelerators for the neural network
+          family. InProceedings of the DAC.1–6.
+       [52] X. Wei et al. 2017. Automated systolic array architecture synthesis for high throughput CNN inference on FPGAs. In
+          Proceedings of the DAC.1–6.
+       [53] H. Wong et al. 2011. Comparing FPGA vs. custom CMOS and the impact on processor microarchitecture. InProceed-
+          ings of the FPGA. 5–14.
+       [54] S. Yazdanshenas et al. 2017. Don’t forget the memory: Automatic block RAM modelling, optimization, and architec-
+          ture exploration. InProceedings of the FPGA. 115–124.
+       [55] C. Zhang et al. 2015. Optimizing FPGA-based accelerator design for deep convolutional neural networks. InProceed-
+          ings of the FPGA. 161–170.
+       [56] C. Zhang et al. 2016. Energy-efffcient CNN implementation on a deeply pipelined FPGA cluster. InProceedings of the
+          ISLPED. 326–331.
+       [57] C. Zhang and V. Prasanna. 2017. Frequency domain acceleration of convolutional neural networks on CPU-FPGA
+          shared memory system. InProceedings of the FPGA. 35–44.
+
+       Received December 2017; revised April 2018; accepted July 2018
+
+
+
+
+
+
+
+
+
+
+          ACM Transactions on Reconffgurable Technology and Systems, Vol. 11, No. 3, Article 20. Pub. date: December 2018.

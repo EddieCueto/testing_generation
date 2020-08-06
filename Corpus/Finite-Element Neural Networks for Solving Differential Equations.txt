@@ -1,0 +1,793 @@
+                                                               IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005                                                                                                                                                                                                                                                                                                                                                                                                                1381
+     Finite-Element Neural Networks for Solving
+             Differential Equations
+    Pradeep Ramuhalli, Member, IEEE, Lalita Udpa, Senior Member, IEEE, and Satish S. Udpa, Fellow, IEEE
+
+   Abstract—The solution of partial differential equations (PDE)
+  arises in a wide variety of engineering problems. Solutions to most
+  practical problems use numerical analysis techniques such as ﬁ-
+  nite-element or ﬁnite-difference methods. The drawbacks of these
+  approaches include computational costs associated with the mod-
+  eling of complex geometries. This paper proposes a ﬁnite-element
+  neural network (FENN) obtained by embedding a ﬁnite-element
+  model in a neural network architecture that enables fast and ac-
+  curate solution of the forward problem. Results of applying the
+  FENN to severalsimpleelectromagnetic forward and inverseprob-
+  lems are presented. Initial results indicate that the FENN perfor-
+  mance as a forward model is comparable to that of the conven-
+  tional ﬁnite-element method (FEM). The FENN can also be used
+  in an iterative approach to solve inverse problems associated with Fig. 1. Iterative inversion method for solving inverse problems. the PDE. Results showing the ability of the FENN to solve the in-
+  verse problem given the measured signal are also presented. The
+  parallel nature of the FENN also makes it an attractive solution resulting in the corresponding solution to the forward problem
+  for parallel implementation in hardware and software.    . The model output is compared to the measurement ,
+   Index Terms—Finite-element method (FEM), ﬁnite-element using a cost function  .If  is less than a toler-
+  neural network (FENN), inverse problems.      ance, the estimateis used as the desired solution. If not,
+                    is updated to minimize the cost function.
+  S     I. I           Although ﬁnite-element methods (FEMs) [3], [4] are ex- NTRODUCTION       tremely popular for solving differential equations, their majorOLUTIONS of differential equations arise in a widedrawback is computational complexity. This problem becomesvariety of engineering applications in electromagnetics,more acute when three-dimensional (3-D) ﬁnite-elementsignal processing, computational ﬂuid dynamics, etc. Thesemodels are used in an iterative algorithm for solving the inverseequations are typically solved using either analytical or numer-problem. Recently, several authors have suggested the use ofical methods. Analytical solution methods are however feasibleneural networks (MLP or RBF networks [5]) for solving differ-only for simple geometries, which limits their applicability. Inential equations [6]–[9]. In these techniques, a neural networkmost practical problems with complex boundary conditions,is trained using a large database containing the input data andnumerical analysis methods are required in order to obtain athe solution of the differential equation. The neural networkreasonable solution. An example is the solution of Maxwell’sduring generalization learns the mapping corresponding toequations in electromagnetics. Solutions to Maxwell’s equa-the PDE. Alternatively, in [10], the solution to a differentialtions are used in a variety of applications for calculating theequation is written as a constant term, and an adjustable term interaction of electromagnetic (EM) ﬁelds with different typeswith parameters that need to be determined. A neural networkof media.               is used to determine the optimal values of the parameters.Very often, the solution to differential equations is necessaryThis approach is applicable only to problems with regularfor solving the corresponding inverse problems. Inverse prob-boundaries. An extension of the approach to problems withlems in general are ill-posed, lacking continuous dependence ofirregular boundaries is given in [11]. Other neural networkthe measurements on the input. This has resulted in the devel-based differential equation solvers use multilayer perceptronopment of a variety of solution techniques ranging from simplenetworks or variations on the MLP to approximate the unknowncalibration procedures to other direct (analytical) and iterativefunction in a PDE [12]–[14]. A combination of the PDE andapproaches [1]. Iterative methods typically employ a forwardboundary conditions is used to construct an objective functionmodel that simulates the underlying physical process (Fig. 1)that is minimized during the training process.[2]. An initial estimate of the solution of the inverse problem A major limitation of these approaches is that the network ar- (represented byin Fig. 1) is applied to the forward model,chitecture is selected somewhat arbitrarily. A second drawback
+                    is that the performance of the neural networks depends on the
+   Manuscript received January 17, 2004; revised April 2, 2005.    data used in training and testing. As long the test data is sim-
+   The authors are with the Department of Electrical and Computer Engi- ilar to the training data, the network can interpolate between the neering, Michigan State University, East Lansing, MI 48824 USA (e-mail: training data points to obtain a reasonable prediction. However, rpradeep@egr.msu.edu; udpal@egr.msu.edu; udpa@egr.msu.edu).
+   Digital Object Identiﬁer 10.1109/TNN.2005.857945      when the test signal is no longer similar to the training data, the
+                1045-9227/$20.00 © 2005 IEEE                                                                  1382                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+      network is forced to extrapolate and the performance degrades.  Section V draws conclusions from the results and presents
+      One way around this difﬁculty is to ensure that the training data- ideas for future work.
+      base has a diverse set of signals. However, this is difﬁcult to
+      ensure in practice. Alternatively, we have to design neural net-                  II. T HE FENN
+      works that are capable of extrapolation. Extrapolation methods   This section brieﬂy describes the FEM and proposes its refor-are discussed extensively in literature [15]–[18], but the design  mulation into a parallel neural network structure. Details aboutof an extrapolation neural network involves several issues par-  the FEM can be found in [3] and [4].ticularly for ensuring that the error in the network prediction
+      stays within reasonable bounds during the extrapolation proce-  A. The FEMdure.                                          Consider a typical boundary value problem with the gov-An ideal solution to this problem would be to combine the erning differential equationpower of numerical models with the computational speed of
+      neural networks, i.e., to embed a numerical model in a neural                                          (1)network structure. One suchﬁnite-element neural network
+      (FENN) formulation has been reported by Takeuchi and Kosugi  where  is a differential operator,  is the applied source or
+      [19]. This approach, based on error minimization, derives the forcing function, and is the unknown quantity. This differen-
+      neural network using the energy functional resulting from the tial equation can be solved in conjunction with boundary condi-
+      ﬁnite-element formulation. Other reports of FENN combina-  tionson theboundary enclosingthedomain .Thevariational
+      tions are either similar to the Takeuchi method [20], [21] or use  formulation used inﬁnite-element analysis determines the un-
+      Hopﬁeld neural networks to solve the forward problem [22],  known by minimizing the functional [3], [4]
+      [23]. Kalkkuhlet al.[24] provide a description of a FEM-based
+      approach to NARX modeling that may be interpreted both as                                          (2)
+      a local model network, as well as a single layer feedforward
+      network. A slightly different approach to merging numerical  with respect to the trial function . The minimization procedure
+      methods and neural networks is given in [25], where theﬁ-  starts by dividing  into  small subdomains called elements
+      nite-difference time domain (FDTD) method is cast in a neural (Fig. 2) and representing  in each element by means of basis
+      network framework for the purpose of solving electromagnetic  functions deﬁned over the element
+      forward problems. The related problem of mesh generation
+      inﬁnite-element models has also been tackled using neural                                          (3)networks (for instance, [26]). Generally, these networks are
+      designed to solve the forward problem, and must be modiﬁed
+      to solve inverse problems.                          where  is the unknown solution in element ,   is the basis
+        This paper proposes a new approach that embeds aﬁnite-ele-  function associated with node in element ,  is the value
+      ment model commonly used in the solution of differential equa-  of the unknown quantity at node and is the total number of
+      tions in a neural network. The network, called the FENN, can  nodes associated with element . In general, the basis functions
+      solve the forward problem and can also be used in an itera-  (also referred to as interpolation functions or shape functions)
+      tive algorithm to solve inverse problems. The primary advan- can be linear, quadratic, or of higher order. Typically,ﬁnite-el-
+      tage of this approach is that the FEM is represented in a parallel ement models use either linear or polynomial spline basis func-
+      form. Thus, it has the potential to alleviate the computational  tions.
+      cost associated with using the FEM in an iterative algorithm   The functional within an element is expressed as
+      for solving inverse problems. More importantly, the FENN does
+      not need any training, and the computation of the weights is                                          (4)
+      a one-time process. The proposed approach is also different in
+      that the neural network architecture developed can be used to
+      solve the forward and inverse problems. The structure of the By substituting (3) in (4), we obtain the discrete version of the
+      neural network is also simpler than those reported in the litera-  functional within each element
+      ture, making it easier to implement in parallel in both hardware                                          (5)and software.
+        The rest of this paper is organized as follows. Section II  where     is the transpose of a matrix,   is the    ele-brieﬂy describes the FEM, and derives the proposed FENN. In  mental matrix with elements this paper, we focus on the problem of solving typical equa-
+      tions encountered in electromagnetic nondestructive evaluation                                          (6)(NDE). However, the same concepts can be easily applied
+      to solve differential equations encountered in otherﬁelds.
+      Sections III, IV and V present the application of the FENN  and  is an    vector with elements
+      to solving forward and inverse problems, along with initial
+      results. A discussion of the advantages and disadvantages of                                          (7)
+      the proposed FENN architecture is given in Section IV. Finally,                                                               RAMUHALLI   et al.: FENNs FOR SOLVING DIFFERENTIAL EQUATIONS                                                                                                                                                                                                                                                                                                                                                                                                                                                                               1383
+
+
+      Combining the values in (5) for each of the elements
+
+                                              (8)
+
+      where  is the      global matrix derived from the terms
+      of the elemental matrices for different elements, and  is the
+      total number of nodes.  , also called the stiffness matrix, is a
+      sparse, banded matrix. Equation (8) is the discrete version of
+      the functional and can be minimized with respect to the nodal
+      parameters by taking the derivative of with respect to and
+      setting it equal to zero, which results in the matrix equation    Fig.2. (a)Schematicrepresentationofdomainandboundary. (b)SampleFEM
+                                                  mesh for the domain.
+                                              (9)
+
+        Boundary conditions for these problems are usually of two
+      types: natural boundary conditions and essential boundary
+      conditions. Essential boundary conditions (also referred to as
+      Dirichlet boundary conditions) impose constraints on the value
+      of the unknown  at several nodes. Natural boundary condi-
+      tions (of which Neumann boundary conditions are a special
+      case) impose constraints on the change in across a boundary.
+      Dirichlet boundary conditions are imposed on the functional
+      minimization (9), by deleting the rows and columns of the
+      matrix corresponding to the nodes on the Dirichlet boundary
+         and modifying  in (9).                         Fig. 3. FEM domain discretization using two elements and four nodes.
+        Natural boundary conditions are applied in the FEM by
+      adding an additional term to the functional. These boundary  This process ensures that natural boundary conditions are im-conditions are then incorporated into the functional and are  plicitlyandautomatically satisﬁedduring theFEMsolutionpro-satisﬁed automatically during the solution procedure. As an  cedure.example, consider the natural boundary condition represented
+      by the following equation [3]                        B. The FENN
+                               on            (10)   This section describes how theﬁnite-element model can be
+                                                  converted intoa parallel network form. Wefocus on solving typ-
+      where   represents the Neumann boundary,  is its outward  ical inverse problems arising in electromagnetic NDE, but the
+      normal unit vector,  is some constant, and , , and  are basicideaisapplicabletootherareas aswell.NDEinverseprob-
+      known parameters associated with the boundary. Assuming that lems can be formulated as the problem ofﬁnding the material
+      the boundary   is made up of   segments, we can deﬁne properties (such as the conductivity or the permeability) within
+      boundary matrices   and  with elements              the domain of the problem. Since the domain is discretized in
+                                                  the FEM method by a large number of elements, the problem
+                                                  can be posed as one ofﬁnding the material properties in each
+                                                  of these elements. These properties are usually embedded in the
+                                                  differential operator , or equivalently, in the global matrix .
+                                                  Thus, in order to be able to iteratively estimate these properties
+                                                  from the measurements, the material properties need to be sep-
+                                                  arated out from  . This separation is easier to achieve at the
+                                                  element matrix level. For nodes and in element
+                                             (11)
+
+      where   are basis functions deﬁned over segment and  is
+      the length of the segment. The elements of   are added to the
+      elementsof  that correspond tothe nodeson the boundary  .
+      Similarly, the elements of   are added to the corresponding
+      elements of . The global matrix (9) is thus modiﬁed as follows
+      before solving for                                                                       (13)
+
+                                                  where   is the parameter representing the material property(12)  in element  and  represents the differential operator at the                                                                  1384                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        Fig. 4. FENN.
+
+
+        element level without   embedded in it. Substituting (13) into  neurons, corresponding to the    members of the global ma-
+        the functional, we get                                    trix  . The output of each group of hidden layer neurons is the
+                                                               corresponding row vector of  . The weights from the input to
+                                                               the hidden layer are set to the appropriate values of   . Each(14)  neuron in the hidden layer acts as a summation unit, (equivalent
+                                                               toasummationfollowedbyalinearactivationfunction[5]).The
+        If we deﬁne                                            outputs of the hidden layer neurons are the elements    of the
+                                                               global matrix   as given in (15).
+                                                         (15)    Each group of hidden neurons is connected to one output
+                                                               neuron (giving a total of  output neurons) by a set of weights
+                                                                , with each element of  representing the nodal values  .where                                                 Note that the set of weights  between theﬁrst group of hidden
+                                                               neurons and theﬁrst output neuron are the same as the set of(16)else                                   weights between the second group of hidden neurons and the
+                                                               second output neuron (as well as between successive groups
+                                                               of hidden neurons and the corresponding output neuron). Each
+                                                               output neuron is also a summation unit followed by a linear ac-
+                                                               tivation function, and the output of each neuron is equal to  :
+
+
+                                                                                                                (18)
+                                                         (17)
+
+                                                               where the second part of (18) is obtained by using (15). As an
+        Equation (17) expresses the functional explicitly in terms of  .  example, the FENN architecture for a two-element, four-node
+        The assumption that   is constant within each element is im-                 FEM mesh (Fig. 3) is shown in Fig. 4. In this
+        plicit in this expression. This assumption is usually satisﬁed in  case, the FENN has two input neurons, 16 hidden layer neurons
+        problems in NDE where each element in the FEM mesh is de-  and four output neurons. Theﬁgure illustrates the grouping of
+        ﬁned within the conﬁnes of a domain, and at no time does a  the hidden layer neurons, as well as the similarity inherent in
+        single element cross domain boundaries. Furthermore, each el-  the weights that connect each group of hidden layer neurons
+        ement is small enough that minor variations in   within an el-  to the corresponding output neuron. To simplify theﬁgure, the
+        ement may be ignored. Equation (17) can be easily converted  weights between the network input and hidden layer neurons
+        into a parallel network form. The neural network comprises an  are depicted by means of vectors                      (for
+        input, output and hidden layer. In the general case with   el-       , 2, 3, 4 and     , 2), where the individual weight values
+        ements and   nodes in the FEM mesh, the input layer with      are deﬁned as in (16).
+           network inputs takes the  values in each element as input.    1) Boundary Conditions in the FENN: Note that the ele-
+        The hidden layer has    neurons 1 arranged in   groups of    ments of   and   in (11) do not depend on the material prop-
+         1                                                    erties .   and   need to be added appropriately to the global In this paper, we use the term“neurons”in the FENN (in the hidden and
+        output layers) to avoid confusion with the nodes in aﬁnite-element mesh.     matrix   and the source vector  as shown in (12). Equation                                                               RAMUHALLI   et al.: FENNs FOR SOLVING DIFFERENTIAL EQUATIONS                                                                                                                                                                                                                                                                                                                                                                                                                                                                               1385
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 5. Geometry of mesh for 1-D FEM.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 6. Flowchart (with example) for designing the FENN for a general PDE.
+
+
+       (12) thus implies that natural boundary conditions can be ap-  layer neurons. These weights will be referred to as the clamped
+       plied in the FENN as bias inputs to the hidden layer neurons  weights, while the remaining weights will be referred to as the
+       that are a part of the boundary, and the corresponding output  free weights. An example of these weights is presented later.
+       neurons. Dirichlet boundary conditions are applied by clamping    The FENN architecture was derived without consideration of
+       the corresponding weights between the hidden layer and output  the dimensionality of the problem at hand, and thus can be used                                                                  1386                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+      for 1-, 2-, 3-, or higher dimensional problems. The number of
+      nodes and elements in the FEM mesh dictates the number of
+      neurons in the different layers. The weights between the input
+      and hidden layer change depending on node-element connec-
+      tivity information.
+        The major drawback of the FENN is the number of neurons
+      and weights necessary. However, the memory requirements can
+      be reduced considerably, since most of the weights between the
+      input and hidden layer are zero. These weights, and the corre-
+      sponding connections, can be discarded. Similarly, most of the Fig. 7. Shielded microstrip geometry. (a) Complete problem description. (b)
+      elements of the  matrix are also zero (  is a banded ma-  Problem description using symmetry considerations.
+      trix). The corresponding neurons in the hidden layer can also
+      be discarded, reducing memory and computation requirements   The network implementation of (23) can be derived as fol-
+      considerably. Furthermore, the weights between each group of  lows. If  and  values at each element are the inputs to the
+      hidden layer neurons and the output layer are the same   .  network,   ,      ,   , and      form the weights
+      Weight-sharing approaches can be used here to further reduce  between the input and hidden layers. The network thus uses
+      the storage requirements.                           inputneuronsand  hiddenneurons.Thevaluesof ateachof
+                                                  thenodesareassigned asweightsbetweenthehidden andoutput
+      C. A 1-D Example                               layers, and the source   is the desired output of this network
+        Consider the 1-D equation                        (corresponding to the  output neurons). Dirichlet boundary
+                                                  conditions on are applied as explained earlier.
+
+                                             (19)  D. General Case
+                                                    Fig. 6 shows aﬂowchart of the general scheme for convertingboundary conditions       on the boundary deﬁned by .  a differential equation into the FENN structure. An exampleand  are constants depending on the material and  is the in two dimensions is also provided next to theﬂowchart. Weapplied source. Laplace’s equation and Poisson’s equation are  start with the differential equation and the boundary conditionsspecial cases of this equation. The FENN formulation for this and formulate the FEM using the variational method. This in-problem starts by discretizing the domain of interest with  el-  volves discretizing the domain of interest with  elements andements and  nodes. In one dimension, each element is deﬁned    nodes, selecting basis functions, writing the functional forby two nodes (Fig. 5). Deﬁne basis functions   and   over  each element and obtaining the element matrices and the sourceeach element and let  is the value of on node in element  vector. The example presented uses the FEM mesh shown in. An example of the basis functions is shown in Fig. 5.      Fig. 3, with      elements, and      nodes, and linearFor these basis functions, i.e.,                      basis functions. The unknown solution to the differential equa-
+                                                  tion   is represented by its values at each of the nodes in the(20)  ﬁnite-element mesh   . The element matrices   are then
+                                                  separated into two parts, with one part dependent on the mate-the element matrices are given by [3]                   rial properties and while the other is independent of them.
+                                                    The FENN is then designed to have   input neurons,
+                                                  hidden neurons, and  output neurons, where is the number
+                                                  of material property parameters. In the example under consid-
+                                                  eration,    , since we have two material property parameters(21)  ( and ). Theﬁrst group of  input neurons takes in the
+                                                  values while the second group takes in the values in each ele-
+                                                  ment. The weights from the input to the hidden layer are set to
+                                                  the appropriate values of  . In the example, since nodes 1, 2,
+                                             (22)  and 3 are part of element 1 (see Fig. 3), the weights from theﬁrst
+                                                  input node   to theﬁrst group of four neurons in the hidden
+      Here,  is the length of element . The global matrix  is then layer are given by
+      constructed by selectively adding the element matrices based
+      on the nodes that form an element. Speciﬁcally,  is a sparse
+      tridiagonal matrix, and its nonzero elements are given by                                             (24)
+
+                                                  The last weight is zero since node 4 is not a part of element 1.
+                                                    Each group of hidden neurons is connected to one output
+                                                  neuron (giving a total of  output neurons) by a set of weights
+                                                   , with each element of representing the nodal values  . The
+                                             (23)  output of each neuron in the output layer is equal to .                                                               RAMUHALLI   et al.: FENNs FOR SOLVING DIFFERENTIAL EQUATIONS                                                                                                                                                                                                                                                                                                                                                                                                                                                                               1387
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 8. Forward problem solutions for shielded microstrip problem show the contours of constant potential for: (a) FEM solution and (b) FENN solution. (c) Error
+       between (a) and (b). Thex- andy-axes show the nodes in the FEM discretization of the domain, and thez-axis in (c) shows the error at each of these nodes in volts.
+
+
+
+        III. F ORWARD AND INVERSE PROBLEM FORMULATION USING   where     is the output of the FENN. Then, for a gradient-
+                               FENN                          based approach, the gradients of the error with respect to the
+                                                              free hidden layer weights is given by
+
+          The FENN architecture and algorithm lends itself to solving                                                   (27)both the forward and inverse problems. The forward problem
+       involves determining the weights  given the material parame-  Equation (27) can be used to solve the forward problem. Sim-ters  and  and the applied source  while the inverse problem  ilarly, to solve the inverse problem, the gradients of the errorinvolves determining  and  given  and . Any optimization  with respect to  and  (input of the FENN) are necessary, andapproach can be used to solve both these problems. Suppose we  are given bydeﬁne the error at the output of the FENN as
+
+
+
+
+                                                                                                                (28)
+
+
+
+
+                                                         (26)                                                   (29)                                                                  1388                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+
+                                                          TABLE I
+                                   SUMMARY OF PERFORMANCE OF THE FENN A LGORITHM FOR VARIOUS PDE S
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        For the forward problem, such an approach is equivalent to the  Dirichlet boundary, with      on the microstrip and     on
+        iterative approaches used to solve for the unknown nodal values  the outer boundary [Fig. 7(b)]. Finally, there is no source term
+        in the FEM [4].                                         in this example (the source term would correspond to a charge
+                                                               distribution in the domain of interest), i.e.,      . In this ex-
+                             IV. R ESULTS                       ample, we assume that        volts and      . Further, we
+                                                               assume that the domain of interest is                  .A. Forward Model Results                                  The solution to the forward problem is presented in Fig. 8,
+          The FENN was tested using both 1- and 2-D versions of  with the FEM solution using 11 nodes in each direction shown
+        Poisson’s equation                                       in Fig. 8(a) and the corresponding FENN solution in Fig. 8(b).
+
+                                                         (30)  Theseﬁgures show contours of constant potential. The error be-
+                                                               tween the FEM and FENN solutions is presented in Fig. 8(c). As
+        where  represents the material property, and  is the applied  seen from theﬁgure, the FENN is seen to match the FEM solu-
+        source. For instance, in electromagnetics  may represent the  tion accurately, with the peak error at any node on the order of
+        permittivity while  represents the charge density.                  .
+          As theﬁrst example, consider the following 2-D equation       Several other examples were also used to test the FENN and
+                                                               the results are summarized in Table I. Column 1 shows the
+                                                         (31)  PDE used to evaluate the FENN performance, while column 2
+                                                               shows the boundary conditions used. The analytic solution to
+        with boundary conditions                                 the problem is indicated in Column 3. The FENN structure and
+
+                                  on                    (32)  the number of iterations for convergence using a gradient de-
+                                                               scent approach are indicated in Columns 4 and 5, respectively.
+        and                                                   The FENN structure, as explained earlier, has    inputs,
+                                                               hidden neurons and  output neurons, where   and  are the
+                                               on       (33)  number of elements and nodes in the FEM mesh, respectively,
+                                                               and  is the number of hidden neurons, and corresponds to the
+        This is the governing equation for the shielded microstrip trans-  number of nonzero elements in the FEM global matrix  . Fi-
+        mission line problem shown in Fig. 7. The forward problem  nally, Columns 6 and 7 present the sum-squared error (SSE) and
+        computes the electric potential due to the shielded microstrip  the maximum error in the solution, respectively, where the er-
+        shown in Fig. 7(a). The potentials are zero on the shielding con-  rors are computed with respect to the analytical solution. These
+        ductor.Sincethegeometryissymmetric,wecansolvetheequiv-  results indicate that the FENN is capable of accurately deter-
+        alent problem shown in Fig. 7(b), by applying the homogeneous  mining the potential . One advantage of the FENN approach
+        Neumann condition on the plane of symmetry. The inner con-  is that the computation of the input-hidden layer weights is a
+        ductor (microstrip) is held at a constant potential of   volts.  one-time process, as long as the differential equation does not
+        Finally, we also assume that the material inside the shielding  change. The only changes necessary to solve the different prob-
+        conductor has a permittivity      , where K is a constant. The  lems are changes in the input    and the desired output   .
+        permittivity in this case corresponds to the material property .
+        Speciﬁcally,            and     . The homogeneous Neu-  B. Inverse Model Results
+        mann boundary condition is equivalent to setting          .    TheFENNwasalsousedtosolveseveralsimpleinverseprob-
+        The microstrip and the shielding conductor correspond to the  lems based on (30). In all cases, the objective was to determine                                                               RAMUHALLI   et al.: FENNs FOR SOLVING DIFFERENTIAL EQUATIONS                                                                                                                                                                                                                                                                                                                                                                                                                                                                               1389
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 9. FENN inversion results for Poisson’s equation with initial solutions (a)  = x . (b)  =1+   x .
+
+
+       the value of  and  for given values of  and . Theﬁrst ex-    In order to obtain a unique solution, we need to constrain the
+       ample is a 1-D problem that involves determining  given       value of  at the boundary as well. Consider the same differen-
+       and     ,         for the differential equation             tial equation as (34), but with  and  speciﬁed as follows:
+
+                                                         (34)                           and
+
+       with boundary conditions         and        . The analyt-                                                   (36)
+       ical solution to this inverse problem is                      The analytical solution for this equation is              .To
+                                       and              (35)  solve this problem, we set       and clamp the value of  at
+       As seen from (35), the problem has an inﬁnite number of solu-       and     as follows:          ,                 .
+       tions and we expect the solution procedure to converge to one    The results of the constrained inversion obtained using 11
+       of these solutions depending on the initial value.              nodes and 10 elements in the correspondingﬁnite-element mesh
+          Fig. 9(a) and (b) shows two solutions to this inverse problem  are shown in Fig. 10. Fig. 10(a) shows the comparison between
+       for two different initializations (shown using triangles). In both  the analytical solution (solid line with squares) and the FENN
+       cases, the FENN solution (in stars) is seen to match the analyt-  result (solid line with stars). The initial value of  is shown in
+       ical solution (squares). The SSE in both cases was on the order  theﬁgure as a dashed line. Fig. 10(b) shows the comparison
+       of     .                                              between the actual and desired forcing function  at the FENN                                                                  1390                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        Fig. 10. Constrained inversion result with eleven nodes. (a) Comparison of analytic and simulation results for  . (b) Comparison of actual and desired NN outputs.
+
+
+        output. This result indicates that the SSE in the forcing function,  weight structure that allows both the forward and inverse prob-
+        as well as the SSE in the inversion result, is fairly large (0.0148  lemstobesolvedusingsimplegradient-basedalgorithms.Initial
+        and 0.0197, respectively). The reason for this was traced back  results indicate that the proposed FENN algorithm is capable of
+        to the mesh discretization. Fig. 11 shows the SSE in the output  accurately solving both the forward and inverse problems. In
+        of the FENN and the SSE in the inverse problem solution as a  addition, the forward problem solution from the FENN is seen
+        function of FEM discretization. It is seen that increasing the dis-  to exactly match the FEM solution, indicating that the FENN
+        cretization signiﬁcantly improves the solution. Similar results  represents theﬁnite-element model exactly in a parallel conﬁg-
+        were observed for other problems.                          uration.
+                                                                 The major advantage of the FENN is that it represents the
+                                                               ﬁnite-element model in a parallel form, enabling parallel imple-
+                    V. D ISCUSSION AND CONCLUSION              mentation in either hardware or software. Further, computing
+                                                               gradients in the FENN is very simple. This is an advantage in
+          The FENN is closely related to theﬁnite-element model used  solving bothforward and inverse problems using gradient-based
+        to solve differential equations. The FENN architecture has a  methods. The gradients can also be computed in parallel and                                                               RAMUHALLI   et al.: FENNs FOR SOLVING DIFFERENTIAL EQUATIONS                                                                                                                                                                                                                                                                                                                                                                                                                                                                               1391
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       Fig. 11. SSE in FENN output and inversion results as a function of discretization.
+
+
+       the lack of nonlinearities in the neuron activation functions    [6] C. A. Jensenet al.,“Inversion of feedforward neural networks: algo-
+       makes the computation of gradients simpler. A major advantage       rithms and applications,”Proc. IEEE, vol. 87, no. 9, pp. 1536–1549,
+       of this approach for solving inverse problems is that it avoids       1999.
+                                                                [7] P. Ramuhalli, L. Udpa, and S. Udpa,“Neural networkalgorithm for elec-
+       inverting the global matrix in each iteration. The FENN also       tromagnetic NDE signal inversion,”inENDE 2000, Budapest, Hungary,
+       does not require any training, since most of its weights can be       Jun. 2000.
+       computed in advance and stored. The weights depend on the    [8] C. H. Barbosa, A. C. Bruno, M. Vellasco, M. Pacheco, J. P. Wikswo Jr.,
+                                                                   and A. P. Ewing,“Automation of SQUID nondestructive evaluation of
+       governing differential equation and its associated boundary       steel plates by neural networks,”IEEE Trans. Appl. Supercond., vol. 9,
+       conditions, and as long as these two factors do not change,       no. 2, pp. 3475–3478, 1999.
+       the weights do not change. This is especially an advantage    [9] W.Qing, S. Xueqin,Y.Qingxin,and Y.Weili,“Usingwaveletneural net-
+                                                                   works for the optimal design of electromagnetic devices,”IEEE Trans.
+       in solving inverse problems in electromagnetic NDE. This       Magn., vol. 33, no. 2, pp. 1928–1930, 1997.
+       approach also reduces the computational effort associated with   [10] I. E. Lagaris, A. C. Likas, and D. I. Fotiadis,“Artiﬁcial neural networks
+       the network.                                                 for solving ordinary and partial differential equations,”IEEE Trans.
+                                                                   Neural Netw., vol. 9, no. 5, pp. 987–1000, 1998.
+          Future work will concentrate on applying the FENN to 3-D   [11] I. E. Lagaris, A. C. Likas, and D. G. Papageorgiou,“Neural-network
+       electromagnetic NDE problems. The robustness of the approach       methods for boundary value problems with irregular boundaries,”IEEE
+       will also be tested, since the ability of these approaches to in-       Trans. Neural Netw., vol. 11, no. 5, pp. 1041–1049, 2000.
+                                                                [12] B. P. Van Milligen, V. Tribaldos, and J. A. Jimenez,“Neural network
+       vert practical noisy measurements is important. Furthermore,       differential equation and plasma equilibrium solver,”Phys. Rev. Lett.,
+       the use of better optimization algorithms, like conjugate gra-       vol. 75, no. 20, pp. 3594–3597, 1995.
+       dient methods, is expected to improve the solution speed. In ad-   [13] M. W. M. G. Dissanayake and N. Phan-Thien,“Neural-network-based
+                                                                   approximations for solving partial differential equations,”Commun.
+       dition, parallel implementation of the FENN in both hardware       Numer. Meth. Eng., vol. 10, pp. 195–201, 1994.
+       and software is under investigation. The approach described in   [14] R. Masuoka,“Neural networks learning differential data,”IEICE Trans.
+       this paper is very general in that it can be applied to a variety       Inform. Syst., vol. E83-D, no. 6, pp. 1291–1300, 2000.
+                                                                [15] D.C.Youla,“Generalizedimagerestorationbythemethodofalternating
+       of inverse problems inﬁelds other than electromagnetic NDE.       orthogonal projections,”IEEE Trans. Circuits Syst., vol. CAS-25, no. 9,
+       Some of these other applications will also be investigated to       pp. 694–702, 1978.
+       show the general nature of the proposed method.               [16] D. C. Youla and H. Webb,“Image restoration by the method of convex
+                                                                   projections: part I—theory,”IEEE Trans. Med. Imag., vol. MI-1, no. 2,
+                                                                   pp. 81–94, 1982.
+                            REFERENCES                        [17] A. Lent and H. Tuy,“An iterative method for the extrapolation of band-
+                                                                   limitedfunctions,”J.Math.AnalysisandApplicat.,vol.83, pp.554–565,
+         [1] L. Udpa and S. S. Udpa,“Application of signal processing and pattern       1981.
+            recognition techniques to inverse problems in NDE,”Int. J. Appl. Elec-   [18] W. Chen,“A new extrapolation algorithm for band-limited signals using
+            tromagn. Mechan., vol. 8, pp. 99–117, 1997.                         the regularization method,”IEEE Trans. Signal Process., vol. 41, no. 3,
+         [2] M. Yan, M. Afzal, S. Udpa, S. Mandayam, Y. Sun, L. Udpa, and P.       pp. 1048–1060, 1993.
+            Sacks,“Iterative algorithms for electromagnetic NDE signal inversion,”   [19] J. Takeuchi and Y. Kosugi,“Neural network representation of theﬁnite
+            inENDE ’97, Reggio Calabria, Italy, Sep. 14–16, 1997.                 element method,”Neural Netw., vol. 7, no. 2, pp. 389–395, 1994.
+         [3] J. Jin,The Finite Element Method in Electromagnetics. New York:   [20] R. Sikora, J. Sikora, E. Cardelli, and T. Chady,“Artiﬁcial neural net-
+            Wiley, 1993.                                              work application for material evaluation by electromagnetic methods,”
+         [4] P. Zhou,Numerical Analysis of Electromagnetic Fields. Berlin, Ger-       inProc. Int. Joint Conf. Neural Networks, vol. 6, 1999, pp. 4027–4032.
+            many: Springer-Verlag, 1993.                               [21] G. Xu, G. Littlefair, R. Penson, and R. Callan,“Application of FE-based
+         [5] S. Haykin,Neural Networks: A Comprehensive Foundation. Upper       neural networks to dynamic problems,”inProc. Int. Conf. Neural Infor-
+            Saddle River, NJ: Prentice-Hall, 1994.                             mation Processing, vol. 3, 1999, pp. 1039–1044.                                                                  1392                                                                                                                                                                                                                                                                                                                                                                                                                IEEE TRANSACTIONS ON NEURAL NETWORKS, VOL. 16, NO. 6, NOVEMBER 2005
+
+
+
+         [22] F. Guo, P. Zhang, F. Wang, X. Ma, and G. Qiu,“Finite element anal-                    Lalita Udpa (S’84–M’86–SM’96) received the
+             ysis-based Hopﬁeld neural network model for solving nonlinear elec-                    Ph.D. degree in electrical engineering from Col-
+             tromagneticﬁeld problems,”inProc. Int. Joint Conf. Neural Networks,                    orado State University, Fort Collins, in 1986.
+             vol. 6, 1999, pp. 4399–4403.                                                 She is currently a Professor with the Department
+         [23] H. Lee and I. S. Kang,“Neural algorithm for solving differential equa-                    of Electrical and Computer Engineering, Michigan
+             tions,”J. Computat. Phys., vol. 91, pp. 110–131, 1990.                              State University, East Lansing. She works primarily
+         [24] J. Kalkkuhl, K. J. Hunt, and H. Fritz,“FEM-based neural-network                    in the broad areas of nondestructive evaluation,
+             approach to nonlinear modeling with application to longitudinal vehicle                    signal processing, and biomedical applications. Her
+             dynamics control,”IEEE Trans. Neural Netw., vol. 10, no. 4, pp.                    research interests include various aspects of NDE,
+             885–897, 1999.                                                         such as development of computational models for
+         [25] R. K. Mishra and P. S. Hall,“NFDTD concept,”IEEE Trans. Neural                    the forward problem in NDE, signal and image pro-
+             Netw., vol. 16, no. 2, pp. 484–490, 2005.                      cessing, pattern recognition and neural networks, and development of solution
+         [26] D. G. Triantafyllidis and D. P. Labridis,“Aﬁnite-element mesh gener-  techniques for inverse problems. Her current projects includeﬁnite-element
+             ator based on growing neural networks,”IEEE Trans. Neural Netw., vol.  modeling of electromagnetic NDE phenomena, application of neural network
+             13, no. 6, pp. 1482–1496, 2002.                            and signal processing algorithms to NDE data, and development of image
+                                                               processing techniques for the analysis of NDE and biomedical images.
+                                                                Dr. Udpa is a Member of Eta Kappa Nu and Sigma Xi.
+
+
+
+                                                                                Satish S. Udpa(S’82–M’82–SM’91–F’03) received
+                                                                                the B.Tech. degree in 1975 and the Post Graduate
+                                                                                Diplomainelectricalengineeringin1977fromJ.N.T.
+                                                                                University, Hyderabad, India. He received the M.S.
+                                                                                degree in 1980 and the Ph.D. degree in electrical en-
+                                                                                gineering in 1983, both from Colorado State Univer-
+                                                                                sity, Fort Collins.
+                                                                                  He has been with Michigan State University, East
+                                                                                Lansing, since 2001 and is currently Acting Dean for
+                                                                                the College of Engineering and a Professor with the
+                                                                                Electrical and Computer Engineering Department.
+                                                               Prior to joining Michigan State, he was a Professor with Iowa State University,
+                                                               Ames, from 1990 to 2001 and was associated with the Materials Assessment
+                                                               Research Group. Prior to joining Iowa State, he was an Associate Professor
+                                                               with the Department of Electrical Engineering at Colorado State University.
+                                                               His research interests span the broad area of materials characterization and
+                                                               nondestructive evaluation (NDE). Work done by him to date in the area includes
+                                                               an extensive repertoire of forward models for simulating physical processes
+                                                               underlying several inspection techniques. Coupled with careful experimental
+                         Pradeep Ramuhalli (S’92–M’02) received the  work, such forward models can be used for designing new sensors, optimizing
+                         B.Tech. degree from J.N.T. University, Hyderabad,  test conditions, estimating the probability of detection, assessing designs for
+                         India, in electronics and communications engi-  inspectability and training inverse models for characterizing defects. He has
+                         neering in 1995, and the M.S. and Ph.D. degrees in  also been involved in the development of system-, as well as model-based,
+                         electrical engineering from Iowa State University,  inverse solutions for defect and material property characterization. His interests
+                         Ames, in 1998 and 2002, respectively.           have expanded in recent years to include the development of noninvasive
+                           He is currently an Assistant Professor with the  tools for clinical applications. Work done to date in thisﬁeld includes the
+                         Department of Electrical and Computer Engi-  development of new electromagnetic-acoustic (EMAT) methods for detecting
+                         neering, Michigan State University, East Lansing.  single leg separation failures in artiﬁcial heart valves and microwave imaging
+                         His research is in the general area of nondestruc-  and ablation therapy systems. He and his research group have been engaged
+                         tive evaluation and materials characterization. His  in the design and development of high-performance instrumentation including
+        research interests include the application of signal and image processing  acoustic microscopes and single and multifrequency eddy current NDE instru-
+        methods, pattern recognition and neural networks for nondestructive evaluation  ments. These systems, as well as software packages embodying algorithms
+        applications, development of model-based solutions for inverse problems in  developed by Udpa for defect classiﬁcation and characterization, have been
+        NDE, and the development of information fusion algorithms for multimodal  licensed to industry.
+        data fusion.                                                He is a Fellow of the American Society for Nondestructive Testing (ASNT)
+         Dr. Ramuhalli is a Member of Phi Kappa Phi.                      and a Fellow of the Indian Society of Nondestructive Testing.

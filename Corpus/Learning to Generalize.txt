@@ -1,0 +1,933 @@
+        262-A1677  7/24/01  11:12 AM  Page 763
+
+
+
+
+
+
+
+                                                          SECTION VI / MODEL NEURAL NETWORKS FOR COMPUTATION AND LEARNING
+
+
+
+                         MANFRED OPPER                               Theories that try to understand the ability of neural
+
+                         Neural Computation Research Group                  networks to generalize from learned examples are
+                         Aston University                                   discussed. Also, an approach that is based on ideas
+                         Birmingham B4 7ET, United Kingdom                 from statistical physics which aims to model typical
+                                                                           learning behavior is compared with a worst-case
+                                                                           framework.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    Learning to
+
+
+                    Generalize
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    ................................................ ◗
+
+                                      Introduction                      rule. To what extent is it possible to understand the com-
+                                                                           plexity of learning from examples by mathematical models
+                    Neural networks learn from examples. This statement is     andtheirsolutions?Thisquestionisthefocusofthisarticle.
+                    obviously true for the brain, but also artiﬁcial networks (or    I concentrate on the use of neural networks for classiﬁca-
+                    neural networks), which have become a powerful new tool     tion. Here, one can take characteristic features (e.g., the
+                    for many pattern-recognition problems, adapt their “syn-    pixels of an image) as an input pattern to the network. In
+                    aptic” couplings to a set of examples. Neural nets usually     the simplest case, it should decide whether a given pattern
+                    consist of many simple computing units which are com-    belongs (at least more likely) to a certain class of objects
+                    bined in an architecture which is often independent from    and respond with the output 1 or 1. To learn the under-
+                    the problem. The parameters which control the interaction    lying classiﬁcation rule, the network is trained on a set of
+                    among the units can be changed during the learning phase     patterns together with the classiﬁcation labels, which are
+                    and these are often called synaptic couplings.After the    provided by a trainer. A heuristic strategy for training is to
+                    learning phase, a network adopts some ability to generalize    tune the parameters of the machine (the couplings of the
+                    from the examples; it can make predictions about inputs    network) using a learning algorithm, in such a way that the
+                    which it has not seen before; it has begun to understand a     errors made on the set of training examples are small, in
+
+
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       763        262-A1677  7/24/01  11:12 AM  Page 764
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                the hope that this helps to reduce the errors on new data.     for the case of realizable rules they are also independent
+                How well will the trained network be able to classify an in-    of the speciﬁc algorithm, as long as the training examples
+                put that it has not seen before? This performance on new     are perfectly learned. Because it is able to cover even bad
+                data deﬁnes the generalization ability of the network. This    situations which are unfavorable for improvement of the
+                ability will be affected by the problem of realizability: The     learning process, it is not surprising that this theory may
+                network may not be sufﬁciently complex to learn the rule     in some cases provide too pessimistic results which are also
+                completely or there may be ambiguities in classiﬁcation.     too crude to reveal interesting behavior in the intermediate
+                Here, I concentrate on a second problem arising from the     region of the learning curve.
+                fact that learning will mostly not be exhaustive and the in-       In this article, I concentrate mainly on a different ap-
+                formation about the rule contained in the examples is not    proach, which has its origin in statistical physics rather than
+                complete. Hence, the performance of a network may vary     in mathematical statistics, and compare its results with the
+                from one training set to another. In order to treat the gen-     worst-case results. This method aims at studying the typical
+                eralization ability in a quantitative way, a common model     rather than the worst-case behavior and often enables the
+                assumes that all input patterns, those from the training set     exact calculations of the entire learning curve for models of
+                and the new one on which the network is tested, have a pre-    simple networks which have many parameters. Since both
+                assigned probability distribution (which characterizes the     biological and artiﬁcial neural networks are composed of
+                feature that must be classiﬁed), and they are produced in-     many elements, it is hoped that such an approach may ac-
+                dependently at random with the same probability distribu-    tually reveal some relevant and interesting structures.
+                tion from the network’s environment. Sometimes the prob-       At ﬁrst, it may seem surprising that a problem should
+                ability distribution used to extract the examples and the     simplifywhenthenumberofitsconstituentsbecomeslarge.
+                classiﬁcation of these examples is called the rule.The net-     However, this phenomenon is well-known for macroscopic
+                work’s performance on novel data can now be quantiﬁed by     physical systems such as gases or liquids which consist of
+                the so-called generalization error,which is the probability     a huge number of molecules. Clearly, it is not possible to
+                of misclassifying the test input and can be measured by re-     study the complete microscopic state of such a system,
+                peating the same learning experiment many times with dif-    which is described by the rapidly ﬂuctuating positions and
+                ferent data.                                             velocities of all particles. On the other hand, macroscopic
+                   Within such a probabilistic framework, neural networks     quantities such as density, temperature, and pressure are
+                areoftenviewedasstatisticaladaptivemodelswhichshould    usually collective properties inﬂuenced by all elements. For
+                give a likely explanation of the observed data. In this frame-    such quantities, ﬂuctuations are averaged out in the ther-
+                work, the learning process becomes mathematically related     modynamic limit of a large number of particles and the col-
+                to a statistical estimation problem for optimal network pa-    lective properties become, to some extent, independent of
+                rameters.Hence,mathematicalstatisticsseemstobeamost    themicrostate.Similarly,thegeneralizationabilityofaneu-
+                appropriate candidate for studying a neural network’s be-     ral network is a collective property of all the network pa-
+                havior. In fact, various statistical approaches have been ap-     rameters, and the techniques of statistical physics allow, at
+                plied to quantify the generalization performance. For ex-     least for some simple but nontrivial models, for exact com-
+                ample, expressions for the generalization error have been     putations in the thermodynamic limit. Before explaining
+                obtainedinthelimit,wherethenumberofexamplesislarge    these ideas in detail, I provide a short description of feed-
+                compared to the number of couplings (Seung et al.,1992;    forward neural networks.
+                Amari and Murata, 1993). In such a case, one can expect                              ................................................that learning is almost exhaustive, such that the statistical                             ◗
+
+                ﬂuctuations of the parameters around their optimal values              Artiﬁcial Neural Networks
+                are small. However, in practice the number of parameters is
+                often large so that the network can be ﬂexible, and it is not    Based on highly idealized models of brain function, artiﬁ-
+                clear how many examples are needed for the asymptotic    cial neural networks are built from simple elementary com-
+                theorytobecomevalid.Theasymptotictheorymayactually    puting units, which are sometimes termed neurons after
+                miss interesting behavior of the so-called learning curve,    their biological counterparts. Although hardware imple-
+                which displays the progress of generalization ability with    mentations have become an important research topic, neu-
+                an increasing amount of training data.                      ral nets are still simulated mostly on standard computers.
+                   A second important approach, which was introduced    Each computing unit of a neural net has a single output and
+                into mathematical statistics in the 1970s by Vapnik and    several ingoing connections which receive the outputs of
+                Chervonenkis (VC) (Vapnik, 1982, 1995), provides exact    other units. To every ingoing connection (labeled by the
+                bounds for the generalization error which are valid for any    index i) a real number is assigned, the synaptic weight w,i
+                number of training examples. Moreover, they are entirely    which is the basic adjustable parameter of the network. To
+                independent of the underlying distribution of inputs, and    compute a unit’s output, all incoming values x are multi- i
+
+
+
+
+                764                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 765
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+                                     0.6   −0.9   0.8
+                                                    inputs
+
+                                     1.6 −1.4    −0.1 synaptic weights
+
+                                                       weighted sum
+                                               1.6 × 0.6 + (–1.4) × (–0.9) + (–0.1) × 0.8 = 2.14
+
+
+
+                                                                 1
+
+
+                                                                 0
+
+
+
+                                                                  −1
+                                                                      2.14 aboutput
+                            FIGURE 1 (a) Example of the computation of an elementary unit (neuron) in a neural network. The numeri-
+                            cal values assumed by the incoming inputs to the neuron and the weights of the synapses by which the inputs
+                            reach the neuron are indicated. The weighted sum of the inputs corresponds to the value of the abscissa at which
+                            the value of the activation function is calculated (bottom graph). Three functions are shown: sigmoid, linear, and
+                            step. (b) Scheme of a feedforward network. The arrow indicates the direction of propagation of information.
+
+
+                    plied by the weights w and then added. Figure 1a shows     its simple structure, it can for many learning problems give i
+                    an example of such a computation with three couplings.     a nontrivial generalization performance and may be used
+                    Finally, the result,  wx,is passed through an activation     as a ﬁrst step to an unknown classiﬁcation task. As can be i  i i
+                    function which is typically of the shape of the red curve in     seen by comparing Figs. 2a and 1b, it is also a building
+                    Fig. 1a (a sigmoidal function), which allows for a soft, am-     block for the more complex multilayer networks. Hence,
+                    biguous classiﬁcation between 1 and 1. Other impor-     understanding its performance theoretically may also pro-
+                    tant cases are the step function (green curve) and the linear     vide insight into the more complex machines. To learn a set
+                    function (yellow curve; used in the output neuron for prob-    of examples, a network must adjust its couplings appropri-
+                    lems of ﬁtting continuous functions). In the following, to     ately (I often use the word couplings for their numerical
+                    keep matters simple, I restrict the discussion mainly to the     strengths, the weights w, for i1,..., N). Remarkably, i
+                    step function. Such simple units can develop a remarkable     for the perceptron there exists a simple learning algorithm
+                    computational power when connected in a suitable archi-     which always enables the network to ﬁnd those parameter
+                    tecture. An important network type is the feedforward ar-     values whenever the examples can be learnt by a percep-
+                    chitecture shown in Fig. 1b, which has two layers of comput-     tron. In Rosenblatt’s algorithm, the input patterns are pre-
+                    ing units and adjustable couplings. The input nodes (which     sented sequentially (e.g., in cycles) to the network and the
+                    do not compute) are coupled to the so-called hidden units,
+                    whichfeedtheiroutputsintooneormoreoutputunits.With
+                    suchanarchitectureandsigmoidalactivationfunctions,any
+                    continuous function of the inputs can be arbitrarily closely                                         xx                                   21   x2   x3       xn
+                    approximated when the number of hidden units is sufﬁ-
+                    ciently large.                                                                                      (w1 ,w 2 )
+                                                                            w ................................................                                1  w2 w3    wn ◗
+
+                                    The Perceptron                                                                    x1
+
+
+                    The simplest type of network is the perceptron (Fig. 2a).
+                    There are Ninputs, Nsynaptic couplings w, and the output i
+                    is simply                                               a                          b
+                                           N                               FIGURE 2 (a) The perceptron. (b) Classiﬁcation of inputs
+                                          awx                   [1] i i                           by a perceptron with two inputs. The arrow indicates the vec-
+                                          i1                              tor composed of the weights of the network, and the line per-
+                    It has a single-layer architecture and the step function     pendicular to this vector is the boundary between the classes
+                    (green curve in Fig. 1a) as its activation function. Despite     of input.
+
+
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       765        262-A1677  7/24/01  11:12 AM  Page 766
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                output is tested. Whenever a pattern is not classiﬁed cor-
+                rectly, all couplings are altered simultaneously. We increase     x2
+                by a ﬁxed amount all weights for which the input unit and
+                the correct value of the output neuron have the same sign
+                but we decrease them for the opposite sign. This simple
+                algorithm is reminiscent of the so-called Hebbian learning
+                rule,a physiological model of a learning processes in the
+                real brain. It assumes that synaptic weights are increased
+                when two neurons are simultaneously active. Rosenblatt’s
+                theorem states that in cases in which there exists a choice of
+                the w which classify correctly all of the examples (i.e., per- i
+                fectly learnable perceptron), this algorithm ﬁnds a solution
+                in a ﬁnite number of steps, which is at worst equal to A N 3 ,
+                where Ais an appropriate constant.
+                   It is often useful to obtain an intuition of a perceptron’s                                                    xa                                               1
+                classiﬁcation performance by thinking in terms of a geo-
+                metric picture. We may view the numerical values of the in-
+                puts as the coordinates of a point in some (usually) high-
+                dimensional space. The case of two dimensions is shown
+                in Fig. 2b. A corresponding point is also constructed for the
+                couplings w.The arrow which points from the origin of the i
+                coordinate system to this latter point is called the weight
+                vector or coupling vector. An application of linear algebra
+                tothecomputationofthenetworkshowsthatthelinewhich
+                is perpendicular to the coupling vector is the boundary be-
+                tween inputs belonging to the two different classes. Input
+                points which are on the same side as the coupling vector are
+                classiﬁed as 1 (the green region in Fig. 2b) and those on
+                the other side as 1 (red region in Fig. 2b).
+                   Rosenblatt’s algorithm aims to determine such a line
+                when it is possible. This picture generalizes to higher di-                    direction of coupling vectorb
+                mensions, for which a hyperplane plays the same role of the     FIGURE 3 (a) Projection of 200 random points (with ran-
+                line of the previous two-dimensional example. We can still     dom labels) from a 200-dimensional space onto the ﬁrst two
+                obtainanintuitivepicturebyprojectingontwo-dimensional    coordinate axes (x and x). (b) Projection of the same points 1     2
+                planes. In Fig. 3a, 200 input patterns with random coordi-     onto a plane which contains the coupling vector of a perfectly
+                nates (randomly labeled red and blue) in a 200-dimensional     trained perceptron.
+                input space are projected on the plane spanned by two arbi-
+                trary coordinate axes. If we instead use a plane for projec-
+                tion which contains the coupling vector (determined from    tions for small changes of the couplings). Hence, in general,
+                a variant of Rosenblatt’s algorithm) we obtain the view    in addition to the perfectly learnable perceptron case in
+                shown in Fig. 3b, in which red and green points are clearly     which the ﬁnal error is zero, minimizing the training error
+                separated and there is even a gap between the two clouds.     is usually a difﬁcult task which could take a large amount of
+                   It is evident that there are cases in which the two sets of    computer time. However, in practice, iterative approaches,
+                points are too mixed and there is no line in two dimensions    which are based on the minimization of other smooth cost
+                (or no hyperplane in higher dimensions which separates     functions,areusedtotrainaneuralnetwork(Bishop,1995).
+                them). In these cases, the rule is too complex to be per-                              ................................................fectly learned by a perceptron. If this happens, we must at-                             ◗
+
+                tempt to determine the choice of the coupling which mini-               Capacity, VC Dimension, 
+                mizesthenumberoferrorsonagivensetofexamples.Here,           and Worst-Case Generalization
+                Rosenblatt’s algorithm does not work and the problem of
+                ﬁnding the minimum is much more difﬁcult from the algo-    As previously shown, perceptrons are only able to realize a
+                rithmic point. The training error, which is the number of     very restricted type of classiﬁcation rules, the so-called lin-
+                errorsmadeonthetrainingset,isusuallyanonsmoothfunc-    early separable ones. Hence, independently from the issue
+                tion of the network couplings (i.e., it may have large varia-    of ﬁnding the best algorithm to learn the rule, one may ask
+
+
+
+
+
+                766                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 767
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+                    the following question: In how many cases will the percep-     exp[Nf(m/N)], where the function f(a) vanishes for 
+                    tron be able to learn a given set of training examples per-     a2 and it is positive for a2. Such a threshold phe-
+                    fectly if the output labels are chosen arbitrarily? In order to     nomenon is an example of a phase transition (i.e., a sharp
+                    answer this question in a quantitative way, it is convenient     change of behavior) which can occur in the thermodynamic
+                    tointroducesomeconceptssuchascapacity,VCdimension,     limit of a large network size.
+                    andworst-casegeneralization,whichcanbeusedinthecase       Generally, the point at which such a transition takesof the perceptron and have a more general meaning.          place deﬁnes the so-called capacity of the neural network.In the case of perceptrons, this question was answered in     Although the capacity measures the ability of a network tothe 1960s by Cover (1965). He calculated for any set of in-     learn random mappings of the inputs, it is also related to itsput patterns, e.g., m,the fraction of all the 2 m possible map-     ability to learn a rule (i.e., to generalize from examples).pings that can be linearly separated and are thus learnable     The question now is, how does the network perform on aby perceptrons. This fraction is shown in Fig. 4 as a func-     new example after having been trained to learn mexampletion of the number of examples per coupling for different     on the training set?numbers of input nodes (couplings) N.Three regions can       To obtain an intuitive idea of the connection betweenbe distinguished:                                        capacity and ability to generalize, we assume a training set
+                       Region in which m/N1: Simple linear algebra shows     of size mand a single pattern for test. Suppose we deﬁne
+                    that it is always possible to learn all mappings when the     a possible rule by an arbitrary learnable mapping from
+                    number mof input patterns is less than or equal to the     inputs to outputs. If m1 is much larger than the capac-
+                    number Nof couplings (there are simply enough adjustable     ity, then for most rules the labels on the mtraining pat-
+                    parameters).                                            terns which the perceptron is able to recognize will nearly
+                       Region in which m/N1: For this region, there are ex-     uniquely determine the couplings (and consequently the
+                    amples of rules that cannot be learned. However, when the     answer of the learning algorithm on the test pattern), and
+                    number of examples is less than twice the number of cou-     therulecanbeperfectlyunderstoodfromtheexamples.Be-
+                    plings (m/N2), if the network is large enough almost all     low capacity, in most cases there are two different choices
+                    mappings can be learned. If the output labels for each of    of couplings which give opposite answers for the test pat-
+                    the minputs are chosen randomly 1 or 1 with equal    tern. Hence, a correct classiﬁcation will occur with proba-
+                    probability, the probability of ﬁnding a nonrealizable cou-    bility 0.5 assuming all rules to be equally probable. Figure 5
+                    pling goes to zero exponentially when Ngoes to inﬁnity at    displays the two types of situations form3andN2.
+                    ﬁxed ratio m/N.                                           This intuitive connection can be sharpened. Vapnik and
+                       Region in which m/N2: For m/N2 the probabil-     Chervonenkis established a relation between a capacity
+                    ity for a mapping to be realizable by perceptrons decreases     such as quantity and the generalization ability that is valid
+                    to zero rapidly and it goes to zero exponentially when N     for general classiﬁers (Vapnik, 1982, 1995). The VC dimen-
+                    goes to inﬁnity at ﬁxed ratio m/N(it is proportional to     sion is deﬁned as the size of the largest set of inputs for
+                                                                           which all mappings can be learned by the type of classi-
+                                                                           ﬁer. It equals Nfor the perceptron. Vapnik and Chervo-
+                        1.0                                                 nenkis were able to show that for any training set of size m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      fraction of realizable mappings 0.8
+
+
+                        0.6
+
+
+                        0.4                                                                   ?                           ?
+
+
+                        0.2
+
+
+                        0.0                                                 a                            b
+                          01234 FIGURE 5 Classiﬁcation rules for four patterns based on a m/N                         perceptron. The patterns colored in red represent the training
+                    FIGURE 4 Fraction of all mappings of minput patterns    examples, and triangles and circles represent different class la-
+                    which are learnable by perceptrons as a function of m/Nfor    bels. The question mark is a test pattern. (a) There are two
+                    different numbers of couplings N: N10 (in green), N20    possible ways of classifying the test point consistent with the
+                    (in blue), and N100 (in red).                             examples; (b) only one classiﬁcation is possible.
+
+
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       767        262-A1677  7/24/01  11:12 AM  Page 768
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                larger than the VC dimension D , the growth of the num-    blue curve in Fig. 6, the minimal training error will decrease VC
+                ber of realizable mappings is bounded by an expression     for increasing complexity of the nets. On the other hand,
+                which grows much slower than 2 m (in fact, only like a poly-     the VC dimension and the complexity of the networks in-
+                nomial in m).                                           crease with the increasing number of hidden units, leading
+                   They proved that a large difference between training er-    to an increasing expected difference (conﬁdence interval)
+                ror (i.e., the minimum percentage of errors that is done on    between training error and generalization error as indi-
+                the training set) and generalization error (i.e., the proba-     cated by the red curve. The sum of both (green curve) will
+                bility of producing an error on the test pattern after having    have a minimum, giving the smallest bound on the general-
+                learned the examples) of classiﬁers is highly improbable if    ization error. As discussed later, this procedure will in some
+                the number of examples is well above D . This theorem    cases lead to not very realistic estimates by the rather pes- VC
+                implies a small expected generalization error for perfect     simistic bounds of the theory. In other words, the rigorous
+                learning of the training set results. The expected general-     bounds, which are obtained from an arbitrary network and
+                ization error is bounded by a quantity which increases pro-    rule, are much larger than those determined from the re-
+                portionally to D  and decreases (neglecting logarithmic     sults for most of the networks and rules. VC
+                corrections in m) inversely proportional to m.                                         ................................................Conversely, one can construct a worst-case distribution                             ◗
+
+                of input patterns, for which a size of the training set larger           Typical Scenario: The Approach
+                than D  is also necessary for good generalization. The VC                  of Statistical Physics VC
+                results should, in practice, enable us to select the network
+                with the proper complexity which guarantees the smallest    When the number of examples is comparable to the size of
+                bound on the generalization error. For example, in order     the network, which for a perceptron equals the VC dimen-
+                toﬁnd the proper size of the hidden layer of a network with    sion, the VC theory states that one can construct malicious
+                twolayers,onecouldtrainnetworksofdifferentsizesonthe    situations which prevent generalizations. However, in gen-
+                same data.                                             eral, we would not expect that the world acts as an adver-
+                   The relation among these concepts can be better under-    sary. Therefore, how should one model a typical situation?
+                stood if we consider a family of networks of increasing com-    As a ﬁrst step, one may construct rules and pattern dis-
+                plexity which have to learn the same rule. A qualitative pic-    tributions which act together in a nonadversarial way. The
+                ture of the results is shown in Fig. 6. As indicated by the    teacher–student paradigm has proven to be useful in such a
+                                                                       situation. Here, the rule to be learned is modeled by a sec-
+                                                                       ondnetwork,theteachernetwork;inthiscase,iftheteacher
+                                                                       and the student have the same architecture and the same
+                                  upper bound on                         numberofunits,theruleisevidentlyrealizable.Thecorrect generalization error                        class labels for any inputs are given by the outputs of the
+                                                                       teacher. Within this framework, it is often possible to ob-
+                                                                       tain simple expressions for the generalization error. For a
+                                            upper bound on               perceptron, we can use the geometric picture to visualize confidence interval             the generalization error. A misclassiﬁcation of a new in-
+                                                                       put vector by a student perceptron with coupling vector ST
+                                                                       occurs only if the input pattern is between the separating
+                                                                       planes (dashed region in Fig. 7) deﬁned by ST and the vec-
+                                                                       tor of teacher couplings TE. If the inputs are drawn ran- training error               domlyfromauniformdistribution,thegeneralizationerror
+                                                                       is directly proportional to the angle between ST and TE.
+                                 network complexity                      Hence, the generalization error is small when teacher and
+                                                                       student vectors are close together and decreases to zero
+                                                                       when both coincide.
+                                                                          In the limit, when the number of examples is very large
+                                                                       all the students which learn the training examples perfectly
+                                                                       will not differ very much from and their couplings will be FIGURE 6 As the complexity of the network varies (i.e.,     close to those of the teacher. Such cases with a small gen- of the number of hidden units, as shown schematically below),
+                the generalization error (in red), calculated from the sum of     eralization error have been successfully treated by asymp-
+                the training error (in green) and the conﬁdence interval (in     totic methods of statistics. On the other hand, when the
+                blue) according to the theory of Vapnik–Chervonenkis, shows     number of examples is relatively small, there are many dif-
+                a minimum; this corresponds to the network with the best gen-    ferent students which are consistent with the teacher re-
+                eralization ability.                                        garding the training examples, and the uncertainty about
+
+
+
+                768                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 769
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+                                                                           with the number of couplings N(like typical volumes in 
+                                                                           N-dimensional spaces) and Bdecreases exponentially with
+                                                                           m(because it becomes more improbable to be correct ST                        mtimes for any e0), both factors can balance each other
+                                                                           when mincreases like maN.ais an effective measure for TE                   the size of the training set when Ngoes to inﬁnity. In order
+                                                                           to have quantities which remain ﬁnite as NSq, it is also
+                                                                           useful to take the logarithm of V(e) and divide by N, which
+                                                                           transforms the product into a sum of two terms. The ﬁrst
+                                                                           one (which is often called the entropic term) increases with
+                                                                           increasing generalization error (green curve in Fig. 8). This
+                    FIGURE 7 For a uniform distribution of patterns, the gen-     is true because there are many networks which are not
+                    eralization error of a perceptron equals the area of the    similar to the teacher, but there is only one network equal
+                    shaded region divided by the area of the entire circle. ST and     to the teacher. For almost all networks (remember, the
+                    TE represent the coupling vectors of the student and teacher,     entropic term does not include the effect of the training ex-
+                    respectively.                                             amples) e0.5, i.e., they are correct half of the time by
+                                                                           random guessing. On the other hand, the second term (red
+                                                                           curve in Fig. 8) decreases with increasing generalization er-
+                    the true couplings of the teacher is large. Possible general-    ror because the probability of being correct on an input
+                    ization errors may range from zero (if, by chance, a learn-     pattern increases when the student network becomes more
+                    ing algorithm converges to the teacher) to some worst-case    similar to the teacher. It is often called the energetic contri-
+                    value. We may say that the constraint which speciﬁes the     butionbecauseitfavorshighlyordered(towardtheteacher)
+                    macrostateofthenetwork(itstrainingerror)doesnotspec-    network states, reminiscent of the states of physical systems
+                    ify the microstate uniquely. Nevertheless, it makes sense to    at low energies. Hence, there will be a maximum (Fig. 8, ar-
+                    speak of a typical value for the generalization error, which     row) of V(e) at some value of ewhich by deﬁnition is the
+                    is deﬁned as the value which is realized by the majority of    typical generalization error.
+                    the students. In the thermodynamic limit known from sta-       The development of the learning process as the number
+                    tistical physics, in which the number of parameters of the    of examples aNincreases can be understood as a compe-
+                    network is taken to be large, we expect that in fact almost    tition between the entropic term, which favors disordered
+                    all students belong to this majority, provided the quantity    network conﬁgurations that are not similar to the teacher,
+                    of interest is a cooperative effect of all components of the    andtheenergeticterm.Thelattertermdominateswhenthe
+                    system. As the geometric visualization for the generaliza-    number of examples is large. It will later be shown that such
+                    tion error of the perceptron shows, this is actually the case.    a competition can lead to a rich and interesting behavior as
+                    The following approach, which was pioneered by Elizabeth    the number of examples is varied. The result for the learn-
+                    Gardner (Gardner, 1988; Gardner and Derrida, 1989), is    ing curve (Györgyi and Tishby, 1990; Sompolinsky et al.,
+                    based on the calculation of V(e), the volume of the space
+                    of couplings which both perfectly implement mtraining
+                    examples and have a given generalization error e. For an
+                    intuitive picture, consider that only discrete values for the                               entropic contribution
+                    couplings are allowed; then V(e) would be proportional to
+                    the number of students. The typical value of the general-
+                    ization error is the value of e, which maximizes V(e). It
+                    should be kept in mind that V(e) is a random number and                               energetic contribution
+                    ﬂuctuates from one training set to another. A correct treat-                 1/N logfV(ε)g
+                    ment of this randomness requires involved mathematical
+                    techniques (Mézard et al.,1987). To obtain a picture which
+                    is quite often qualitatively correct, we may replace it by its
+                    average over many realizations of training sets. From ele-
+                    mentary probability theory we see that this average num-              maximum
+                    ber can be found by calculating the volume Aof the space     0        0.1 0.2 0.3 0.4 0.5 
+                    of all students with generalization error e, irrespective of                                                ε
+                    their behavior on the training set, and multiplying it by    FIGURE 8 Logarithm of the average volume of students that
+                    the probability Bthat a student with generalization error e    havelearnedmexamplesandgiveegeneralizationerror(green
+                    gives mtimes the correct answers on independent draw-     curve). The blue and red curves represent the energetic and
+                    ings of the input patterns. Since Aincreases exponentially     entropic contributions, respectively.
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       769        262-A1677  7/24/01  11:12 AM  Page 770
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                  0.5                                                   student is free to ask the teacher questions, i.e., if the stu-
+                ε                                                      dent can choose highly informative input patterns. For the
+                                                                       simple perceptron a fruitful query strategy is to select a new 0.4                                                   input vector which is perpendicular to the current coupling
+                                                                       vector of the student (Kinzel and Ruján, 1990). Such an
+                  0.3                                                   input is a highly ambiguous pattern because small changes
+                                    continuous couplings                   in the student couplings produce different classiﬁcation an-
+                                                                       swers. For more complicated networks it may be difﬁcult 0.2                                                   to obtain similar ambiguous inputs by an explicit construc-
+                                                                       tion. A general algorithm has been proposed (Seung et al.,
+                  0.1                                                   1992a) which uses the principle of maximal disagreement discrete couplings                          in a committee of several students as a selection process for
+                                                                       training patterns. Using an appropriate randomized train- 0.00.0 0.1 0.2     0.3 0.4 0.5 0. 6     ingstrategy,differentstudentsaregeneratedwhichalllearn α        the same set of examples. Next, any new input vector is only
+                FIGURE 9 Learning curves for typical student perceptrons.     accepted for training when the disagreement of its classi-
+                am/Nis the ratio between the number of examples and the     ﬁcation between the students is maximal. For a committee
+                coupling number.                                        of two students it can be shown that when the number of
+                                                                       examples is large, the information gain does not decrease
+                                                                       but reaches a positive constant. This results in a much faster
+                1990) of a perceptron obtained by the statistical physics ap-    decrease of the generalization error. Instead of being in-
+                proach (treating the random sampling the proper way) is     versely proportional to the number of examples, the de-
+                shown by the red curve of Fig. 9. In contrast to the worst-     crease is now exponentially fast.
+                casepredictionsoftheVCtheory,itispossibletohavesome                              ................................................generalization ability below VC dimension or capacity. As                             ◗
+
+                we might have expected, the generalization error decreases          Bad Students and Good Students
+                monotonically, showing that the more that is learned, the
+                more that is understood. Asymptotically, the error is pro-    Although the typical student perceptron has a smooth,
+                portional to Nand inversely proportional to m, in agree-    monotonically decreasing learning curve, the possibility
+                ment with the VC predictions. This may not be true for    that some concrete learning algorithm may result in a set
+                more complicated networks.                              of student couplings which are untypical in the sense of
+                                                                       our theory cannot be ruled out. For bad students, even non-................................................ ◗                              monotic generalization behavior is possible. The problem
+                                Query Learning                    of a concrete learning algorithm can be made to ﬁt into the
+                                                                       statistical physics framework if the algorithm minimizes a
+                Soon after Gardner’s pioneering work, it was realized that    certain cost function. Treating the achieved values of the
+                the approach of statistical physics is closely related to ideas    new cost function as a macroscopic constraint, the tools of
+                in information theory and Bayesian statistics (Levin et al.,     statistical physics apply again.
+                1989;GyörgyiandTishby,1990;OpperandHaussler,1991),       As an example, it is convenient to consider a case in
+                for which the reduction of an initial uncertainty about the    which the teacher and the student have a different archi-
+                true state of a system (teacher) by observing data is a cen-     tecture: In one of the simplest examples one tries to learn
+                tral topic of interest. The logarithm of the volume of rele-     a classiﬁcation problem by interpreting it as a regression
+                vant microstates as deﬁned in the previous section is a di-     problem, i.e., a problem of ﬁtting a continuous function
+                rect measure for such uncertainty. The moderate progress     through data points. To be speciﬁc, we study the situation
+                in generalization ability displayed by the red learning curve    in which the teacher network is still given by a percep-
+                of Fig. 9 can be understood by the fact that as learning pro-    tron which computes binary valued outputs of the form 
+                gresses less information about the teacher is gained from a     ywx, 1, but as the student we choose a network i  i i
+                newrandomexample.Here,theinformationgainisdeﬁned    with a linear transfer function (the yellow curve in Fig. 1a)
+                as the reduction of the uncertainty when a new example is
+                learned. The decrease in information gain is due to the in-                        Y awxi i
+                crease in the generalization performance. This is plausible                              i
+                because inputs for which the majority of student networks    and try to ﬁt this linear expression to the binary labels of
+                give the correct answer are less informative than those for    the teacher. If the number of couplings is sufﬁciently large
+                which a mistake is more likely. The situation changes if the    (larger than the number of examples) the linear function
+
+
+
+
+                770                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 771
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+                    (unlike the sign) is perfectly able to ﬁt arbitrary continuous    the student learns all examples perfectly. Although it may
+                    output values. This linear ﬁt is an attempt to explain the    not be easy to construct a learning algorithm which per-
+                    data in a more complicated way than necessary, and the    forms such a maximization in practice, the resulting gener-
+                    couplings have to be ﬁnely tuned in order to achieve this    alization error can be calculated using the statistical phys-
+                    goal. We ﬁnd that the student trained in such a way does    ics approach (Engel and Van den Broeck, 1993). The result
+                    not generalize well (Opper and Kinzel, 1995). In order to    is in agreement with the VC theory: There is no prediction
+                    compare the classiﬁcations of teacher and student on a new    better than random guessing below the capacity.
+                    random input after training, we have ﬁnally converted the       Although the previous algorithms led to a behavior
+                    student’s output into a classiﬁcation label by taking the sign    whichisworsethanthetypicalone,wenowexaminetheop-
+                    of its output. As shown in the red curve of Fig. 10, after    positecaseofanalgorithmwhichdoesbetter.Sincethegen-
+                    an initial improvement of performance the generalization    eralization ability of a neural network is related to the fact
+                    error increases again to the random guessing value e0.5    that similar input vectors are mapped onto the same out-
+                    at a1 (Fig. 10, red curve). This phenomenon is called    put, one can assume that such a property can be enhanced
+                    overﬁtting.For a1 (i.e., for more data than parameters),    if the separating gap between the two classes is maximized,
+                    it is no longer possible to have a perfect linear ﬁt through    which deﬁnes a new cost function for an algorithm. This
+                    the data, but a ﬁt with a minimal deviation from a linear    optimal margin perceptron can be practically realized and
+                    function leads to the second part of the learning curve.ede-    when applied to a set of data leads to the projection of
+                    creases again and approaches 0 asymptotically for aSq.    Fig. 11. As a remarkable result, it can be seen that there is a
+                    This shows that when enough data are available, the details    relatively large fraction of patterns which are located at the
+                    of the training algorithm are less important.                 gap. These points are called support vectors(SVs). In order
+                       The dependence of the generalization performance on    to understand their importance for the generalization abil-
+                    the complexity of the assumed data model is well-known. If    ity, we make the following gedankenexperimentand assume
+                    function class is used that is too complex, data values can be    that all the points which lie outside the gap (the nonsupport
+                    perfectly ﬁtted but the predicted function will be very sen-    vectors) are eliminated from the training set of examples.
+                    sitive to the variations of the data sample, leading to very       From the two-dimensional projection of Fig. 11, we may
+                    unreliable predictions on novel inputs. On the other hand,    conjecture that by running the maximal margin algorithm
+                    functions that are too simple make the best ﬁt almost insen-    on the remaining examples (the SVs) we cannot create a
+                    sitive to the data, which prevents us from learning enough    larger gap between the points. Hence, the algorithm will
+                    from them.                                             converge to the same separating hyperplane as before. This
+                       It is also possible to calculate the worst-case generaliza-    intuitive picture is actually correct. If the SVs of a training
+                    tion ability of perceptron students learning from a percep-    set were known beforehand (unfortunately, they are only
+                    tron teacher. The largest generalization error is obtained    identiﬁed after running the algorithm), the margin classi-
+                    (Fig. 7) when the angle between the coupling vectors of    ﬁer would have to be trained only on the SVs. It would au-
+                    teacher and student is maximized under the constraint that    tomatically classify the rest of the training inputs correctly.
+
+
+
+
+
+                     0.50
+                    ε
+                     0.40
+
+
+                     0.30            linear student
+
+
+                     0.20
+                           margin classifier
+
+                     0.10
+
+
+                     0.000123456 α
+                    FIGURE 10 Learning curves for a linear student and for a     FIGURE 11 Learning with a margin classiﬁer and m300
+                    margin classiﬁer. am/N.                                 examples in an N150-dimensional space.
+
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       771        262-A1677  7/24/01  11:12 AM  Page 772
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                Hence, if in an actual classiﬁcation experiment the number    ber of consistent students is small; nevertheless, the few re-
+                of SVs is small compared to the number of non-SVs, we    maining ones must still differ in a ﬁnite fraction of bits from
+                may expect a good generalization ability.                    each other and from the teacher so that perfect generaliza-
+                   The learning curve for a margin classiﬁer (Opper and    tion is still impossible. For aslightly above a only the cou- c
+                Kinzel, 1995) learning from a perceptron teacher (calcu-     plings of the teacher survive.
+                lated by the statistical physics approach) is shown in Fig. 10
+                (blue curve). The concept of a margin classiﬁer has recently                              ................................................
+                been generalized to the so-called support vector machines                             ◗
+
+                                                                                    Learning with Errors (Vapnik, 1995), for which the inputs of a perceptron are re-
+                placed by suitable features which are cleverly chosen non-
+                linear functions of the original inputs. In this way, nonlin-    The example of the Ising perceptron teaches us that it will
+                ear separable rules can be learned, providing an interesting     not always be simple to obtain zero training error. More-
+                alternative to multilayer networks.                         over, an algorithm trying to achieve this goal may get stuck
+                                                                       in local minima. Hence, the idea of allowing errors explic-
+                                                                       itly in the learning procedure, by introducing an appropri-................................................ ◗                              ate noise, can make sense. An early analysis of such a sto-
+                             The Ising Perceptron                 chastic training procedure and its generalization ability for
+                                                                       the learning in so-called Boolean networks (with elemen-
+                The approach of statistical physics can develop a speciﬁc     tary computing units different from the ones used in neural
+                predictivepowerinsituationsinwhichonewouldliketoun-    networks) can be found in Carnevali and Patarnello (1987).
+                derstand novel network models or architectures for which    A stochastic algorithm can be useful to escape local min-
+                currently no efﬁcient learning algorithm is known. As the    ima of the training error, enabling a better learning of the
+                simplest example, we consider a perceptron for which the     training set. Surprisingly, such a method can also lead to
+                couplings w are constrained to binary values 1 and 1    bettergeneralizationabilitiesiftheclassiﬁcationruleisalso j
+                (Gardner and Derrida, 1989; Györgyi, 1990; Seung et al.,    corrupted by some degree of noise (Györgyi and Tishby,
+                1992b). For this so-called Ising perceptron(named after    1990). A stochastic training algorithm can be realized by
+                Ernst Ising, who studied coupled binary-valued elements as    the Monte Carlo metropolis method, which was invented
+                a model for a ferromagnet), perfect learning of examples is    to generate the effects of temperature in simulations of
+                equivalent to a difﬁcult combinatorial optimization prob-    physical systems. Any changes of the network couplings
+                lem (integer linear programming), which in the worst case    which lead to a decrease of the training error during learn-
+                is believed to require a learning time that increases expo-     ing are allowed. However, with some probability that in-
+                nentially with the number of couplings N.                   creases with the temperature, an increase of the training
+                   To obtain the learning curve for the typical student, we    error is also accepted. Although in principle this algorithm
+                can proceed as before, replacing V(e) by the number of    may visit all the network’s conﬁgurations, for a large sys-
+                student conﬁgurations that are consistent with the teacher    tem, with an overwhelming probability, only states close to
+                which results in changing the entropic term appropriately.    some ﬁxed training error will actually appear. The method
+                When the examples are provided by a teacher network of     of statistical physics applied to this situation shows that for
+                thesamebinarytype,onecanexpectthatthegeneralization     sufﬁciently large temperatures (T) we often obtain a quali-
+                error will decrease monotonically to zero as a function of a.    tatively correct picture if we repeat the approximate calcu-
+                The learning curve is shown as the blue curve in Fig. 9. For    lation for the noise-free case and replace the relative num-
+                sufﬁciently small a, the discreteness of the couplings has al-    ber of examples aby the effective number a/T.Hence, the
+                most no effect. However, in contrast to the continuous case,    learning curves become essentially stretched and good gen-
+                perfect generalization does not require inﬁnitely many ex-    eralization ability is still possible at the price of an increase
+                amples but is achieved already at a ﬁnite number a 1.24.     in necessary training examples. c
+                This is not surprising because the teacher’s couplings con-       Within the stochastic framework, learning (with errors)
+                tain only a ﬁnite amount of information (one bit per cou-    can now also be realized for the Ising perceptron, and it is
+                pling) and one would expect that it does not take much     interesting to study the number of relevant student conﬁgu-
+                more than aboutNexamples to learn them. The remark-     rations as a function of ein more detail (Fig. 12). The green
+                ableandunexpectedresultoftheanalysisisthefactthatthe     curve is obtained for a small value ofawhere a strong maxi-
+                transition to perfect generalization is discontinuous. The     mum with high generalization error exists. By increasing a,
+                generalization error decreases immediately from a non-     this maximum decreases until it is the same as the second
+                zero value to zero. This gives an impression about the com-     maximum at e0.5, indicating a transition like that of the
+                plex structure of the space of all consistent students and     blue learning curve in Fig. 9. For larger a, the state of per-
+                also gives a hint as to why perfect learning in the Ising per-     fect generalization should be the typical state. Neverthe-
+                ceptron is a difﬁcult task. For aslightly below a, the num-     less, if the stochastic algorithm starts with an initial state c
+
+
+
+                772                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 773
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+
+                                                                 α        lar model. Here, each hidden unit is connected to a dif- 1       ferent set of the input nodes. A further simpliﬁcation is the
+
+
+
+
+
+
+
+
+
+                      log (number of students)                                           α        replacement of adaptive couplings from the hidden units to 2
+                                                                           the output node by a prewired ﬁxed function which maps
+                                                                           the states of the hidden units to the output. α3          Two such functions have been studied in great detail.
+                                                                           For the ﬁrst one, the output gives just the majority vote of
+                                                                 α        the hidden units—that is, if the majority of the hidden units 4
+                                          α                               is negative, then the total output is negative, and vice versa. 4  >α3  >α2  >α1                     This network is called a committee machine.For the second
+                      0 0.1 0.2 0.3 0.4 0.5      type of network, the parity machine,the output is the par- ε          ity of the hidden outputs—that is, a minus results from an
+                    FIGURE 12 Logarithm of the number of relevant Ising stu-     odd number of negative hidden units and a plus from an
+                    dents for different values of a.                              even number. For both types of networks, the capacity has
+                                                                           been calculated in the thermodynamic limit of a large num-
+                                                                           ber Nof (ﬁrst layer) couplings (Barkai et al.,1990; Monas-
+                    which has no resemblance to the (unknown) teacher (i.e.,    son and Zecchina, 1995). By increasing the number of hid-
+                    with e0.5), it will spend time that increases exponentially    den units (but always keeping it much smaller than N),
+                    with Nin the smaller local maximum, the metastable state.    the capacity per coupling (and the VC dimension) can be
+                    Hence, a sudden transition to perfect generalization will be    made arbitrarily large. Hence, the VC theory predicts that
+                    observable only in examples which correspond to the blue    the ability to generalize begins at a size of the training set
+                    curve of Fig. 12, where this metastable state disappears.    which increases with the capacity. The learning curves of
+                    For large vales of a(yellow curve), the stochastic algorithm    the typical parity machine (Fig. 14) being trained by a par-
+                    will converge always to the state of perfect generalization.    ity teacher for (from left to right) one, two, four, and six
+                    On the other hand, since the state with e0.5 is always    hidden units seem to partially support this prediction.
+                    metastable, a stochastic algorithm which starts with the       Belowacertainnumberofexamples,onlymemorization
+                    teacher’s couplings will never drive the student out of the    ofthelearnedpatternsoccursandnotgeneralization.Then,
+                    state of perfect generalization. It should be made clear that    a transition to nontrivial generalization takes place (Han-
+                    the sharp phase transitions are the result of the thermody-    sel et al.,1992; Opper, 1994). Far beyond the transition, the
+                    namic limit, where the macroscopic state is entirely domi-    decay of the learning curves becomes that of a simple per-
+                    nated by the typical conﬁgurations. For simulations of any    ceptron (black curve in Fig. 14) independent of the num-
+                    ﬁnite system a rounding and softening of the transitions    ber of hidden units, and this occurs much faster than for
+                    will be observed.                                        the bound given by VC theory. This shows that the typical
+                    ................................................                              learning curve can in fact be determined by more than one ◗
+
+                         More Sophisticated Computations 
+                        Are Needed for Multilayer Networks         0.5
+                                                                           ε
+                    As a ﬁrst step to understand the generalization perfor-      0.4 mance of multilayer networks, one can study an archi-                               46
+                    tecture which is simpler than the fully connected one of
+                    Fig. 1b. The tree architecture of Fig. 13 has become a popu-      0.3                  2
+
+                                                                                            10.2
+
+
+                                                                            0.1
+
+
+                                                                            0.00.0 0.1     0.2 0.3 0.4 0.5 0.6 α
+
+                                                                           FIGURE 14 Learning curves for the parity machine with
+                    FIGURE 13 A two-layer network with tree architecture.    tree architecture. Each curve represents the generalization er-
+                    The arrow indicates the direction of propagation of the    ror eas a function of aand is distinguished by the number of
+                    information.                                            hidden units of the network.
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       773        262-A1677  7/24/01  11:12 AM  Page 774
+
+
+
+
+
+
+
+                MANFRED OPPER
+
+
+                complexity parameter. In contrast, the learning curve of     the same similarity to every teacher perceptron. Although
+                the committee machine with the tree architecture of Fig. 13    this symmetric state allows for some degree of generaliza-
+                (Schwarze and Hertz, 1992) is smooth and resembles that     tion, it is not able to recover the teacher’s rule completely.
+                of the simple perceptron. As the number of hidden units    After a long plateau, the symmetry is broken and each of
+                is increased (keeping Nﬁxed and very large), the general-    the student perceptrons specializes to one of the teacher
+                ization error increases, but despite the diverging VC di-    perceptrons, and thus their similarity with the others is
+                mension the curves converge to a limiting one having an    lost. This leads to a rapid (but continuous) decrease in the
+                asymptotic decay which is only twice as slow as that of the    generalization error. Such types of learning curves with
+                perceptron. This is an example for which typical and worst-    plateaus can actually be observed in applications of fully
+                case generalization behaviors are entirely different.           connected multilayer networks.
+                   Recently, more light has been shed on the relation be-                              ................................................tween average and worst-case scenarios of the tree com-                             ◗
+
+                mittee. A reduced worst-case scenario, in which a tree                         Outlook
+                committee teacher was to be learned from tree committee
+                students under an input distribution, has been analyzed     The worst-case approach of the VC theory and the typical
+                from a statistical physics perspective (Urbanczik, 1996). As     case approach of statistical physics are important theories
+                expected, few students show a much worse generalization     for modeling and understanding the complexity of learning
+                ability than the typical one. Moreover, such students may     to generalize from examples. Although the VC approach
+                also be difﬁcult to ﬁnd by most reasonable learning algo-     plays an important role in a general theory of learnabil-
+                rithms because bad students require very ﬁne tuning of    ity, its practical applications for neural networks have been
+                their couplings. Calculation of the couplings with ﬁnite pre-    limited by the overall generality of the approach. Since only
+                cision requires many bits per coupling that increases faster    weak assumptions about probability distributions and ma-
+                than exponentially with aand which for sufﬁciently large a    chines are considered by the theory, the estimates for gen-
+                willbebeyondthecapabilityofpracticalalgorithms.Hence,    eralization errors have often been too pessimistic. Recent
+                it is expected that, in practice, a bad behavior will not be     developments of the theory seem to overcome these prob-
+                observed.                                              lems. By using modiﬁed VC dimensions, which depend on
+                   Transitions of the generalization error such as those     the data that have actually occurred and which in favorable
+                observed for the tree parity machine are a characteristic     cases are much smaller than the general dimensions, more
+                feature of large systems which have a symmetry that can     realistic results seem to be possible. For the support vec-
+                be spontaneously broken. To explain this, consider the sim-    tor machines (Vapnik, 1995) (generalizations of the margin
+                plest case of two hidden units. The output of this parity ma-    classiﬁers which allow for nonlinear boundaries that sepa-
+                chine does not change if we simultaneously change the sign    rate the two classes), Vapnik and collaborators have shown
+                of all the couplings for both hidden units. Hence, if the    the effectiveness of the modiﬁed VC results for selecting
+                teacher’s couplings are all equal to 1, a student with all    the optimal type of model in practical applications.
+                couplings equal to 1 acts exactly as the same classiﬁer. If       The statistical physics approach, on the other hand, has
+                there are few examples in the training set, the entropic con-    revealed new and unexpected behavior of simple network
+                tribution will dominate the typical behavior and the typi-    models,suchasavarietyofphasetransitions.Whethersuch
+                cal students will display the same symmetry. Their coupling    transitions play a cognitive role in animal or human brains
+                vectors will consist of positive and negative random num-    is an exciting topic. Recent developments of the theory
+                bers. Hence, there is no preference for the teacher or the     aim to understand dynamical problems of learning. For ex-
+                reversed one and generalization is not possible. If the num-    ample, online learning (Saad, 1998), in which the problems
+                ber of examples is large enough, the symmetry is broken     of learning and generalization are strongly mixed, has en-
+                and there are two possible types of typical students, one    abled the study of complex multilayer networks and has
+                with more positive and the other one with more negative     stimulated research on the development of optimized algo-
+                couplings. Hence, any of the typical students will show     rithms. In addition to an extension of the approach to more
+                some similarity with the teacher (or it’s negative image) and    complicated networks, an understanding of the robustness
+                generalization occurs. A similar type of symmetry break-     of the typical behavior, and an interpolation to the other
+                ing also leads to a continuous phase transition in the fully     extreme, the worst-case scenario is an important subject of
+                connected committee machine. This can be viewed as a     research.
+                committee of perceptrons, one for each hidden unit, which
+                share the same input nodes. Any permutation of these per-                    Acknowledgments
+                ceptrons obviously leaves the output invariant. Again, if    I thank members of the Department of Physics of Complex Sys-
+                few examples are learned, the typical state reﬂects the sym-    tems at the Weizmann Institute in Rehovot, Israel, where parts of
+                metry. Each student perceptron will show approximately     this article were written, for their warm hospitality.
+
+
+
+
+
+                774                                                                           VOLUME III / INTELLIGENT SYSTEMS        262-A1677  7/24/01  11:12 AM  Page 775
+
+
+
+
+
+
+
+                                                                                                        LEARNING TO GENERALIZE
+
+
+                                    References Cited                    OPPER , M., and H AUSSLER , M. (1991). Generalization perfor-
+                                                                              mance of Bayes optimal classiﬁcation algorithm for learning a
+                    AMARI , S., and M URATA , N. (1993). Statistical theory of learning       perceptron. Phys. Rev. Lett.66,2677.
+                       curves under entropic loss. Neural Comput.5,140.             OPPER , M., and K INZEL , W. (1995). Statistical mechanics of gen-
+                    BARKAI , E., H ANSEL , D., and K ANTER , I. (1990). Statistical me-       eralization. In Physics of Neural Networks III(J. L. van Hem-
+                       chanics of a multilayered neural network. Phys. Rev. Lett.65,       men, E. Domany, and K. Schulten, Eds.). Springer-Verlag,
+                       2312.                                                   New York.
+                    BISHOP , C. M. (1995). Neural Networks for Pattern Recognition.    SAAD , D. (Ed.) (1998). Online Learning in Neural Networks.
+                       Clarendon/Oxford Univ. Press, Oxford/New York.                Cambridge Univ. Press, New York.
+                    CARNEVALI , P., and P ATARNELLO , S. (1987). Exhaustive thermo-    SCHWARZE , H., and H ERTZ , J. (1992). Generalization in a large
+                       dynamical analysis of Boolean learning networks. Europhys.       committee machine. Europhys. Lett.20,375.
+                       Lett.4,1199.                                          SCHWARZE , H., and H ERTZ , J. (1993). Generalization in fully con-
+                    COVER , T. M. (1965). Geometrical and statistical properties of       nected committee machines. Europhys. Lett.21,785.
+                       systems of linear inequalities with applications in pattern rec-    SEUNG , H. S., S OMPOLINSKY , H., and T ISHBY , N. (1992a). Statis-
+                       ognition. IEEE Trans. El. Comp.14,326.                       tical mechanics of learning from examples. Phys. Rev. A45,
+                    ENGEL , A., and V AN DEN BROECK , C. (1993). Systems that can       6056.
+                       learn from examples: Replica calculation of uniform conver-     SEUNG , H. S., O PPER , M., and S OMPOLINSKY , H. (1992b). Query
+                       gence bound for the perceptron. Phys. Rev. Lett.71,1772.          by committee. InThe Proceedings of the Vth Annual Workshop
+                    GARDNER ,E.(1988).Thespaceofinteractionsinneuralnetworks.       on Computational Learning Theory (COLT92),p. 287. Associ-
+                       J. Phys. A21,257.                                         ation for Computing Machinery, New York.
+                    GARDNER , E., and D ERRIDA , B. (1989). Optimal storage proper-     SOMPOLINSKY , H., T ISHBY , N., and S EUNG , H. S. (1990). Learning
+                       ties of neural network models. J. Phys. A21,271.                 from examples in large neural networks. Phys. Rev. Lett.65,
+                    GYÖRGYI , G. (1990). First order transition to perfect generaliza-       1683.
+                       tion in a neural network with binary synapses. Phys. Rev. A41,    URBANCZIK , R. (1996). Learning in a large committee machine:
+                       7097.                                                   Worst case and average case. Europhys. Lett.35,553.
+                    GYÖRGYI , G., and T ISHBY , N. (1990). Statistical theory of learn-     VALLET , F., C AILTON , J., and R EFREGIER , P. (1989). Linear and
+                       ing a rule. In Neural Networks and Spin Glasses: Proceedings       nonlinear extension of the pseudo-inverse solution for learn-
+                       of the STATPHYS 17 Workshop on Neural Networks and Spin       ing Boolean functions. Europhys. Lett.9,315.
+                       Glasses(W. K. Theumann and R. Koberle, Eds.). World Scien-     VAPNIK , V. N. (1982). Estimation of Dependencies Based on Em-
+                       tiﬁc, Singapore.                                           pirical Data.Springer-Verlag, New York.
+                    HANSEL , D., M ATO , G., and M EUNIER , C. (1992). Memorization     VAPNIK , V. N. (1995). The Nature of Statistical Learning Theory.
+                       without generalization in a multilayered neural network. Eu-       Springer-Verlag, New York.
+                       rophys. Lett.20,471.                                    VAPNIK , V. N., and C HERVONENKIS , A. (1971). On the uniform
+                    KINZEL , W., and R UJÀN , P. (1990). Improving a network general-       convergence of relative frequencies of events to their probabil-
+                       ization ability by selecting examples. Europhys. Lett.13,473.       ities. Theory Probability Appl.16,254.
+                    LEVIN ,E.,T ISHBY ,N.,andS OLLA ,S.(1989).Astatisticalapproach
+                       to learning and generalization in neural networks. In Proceed-                   General References ings of the Second Workshop on Computational Learning The-
+                       ory(R. Rivest, D. Haussler, and M. Warmuth, Eds.). Morgan     ARBIB , M. A. (Ed.) (1995). The Handbook of Brain Theory and
+                       Kaufmann, San Mateo, CA.                                 Neural Networks.MIT Press, Cambridge, MA.
+                    MÉZARD , M., P ARISI , G., and V IRASORO , M. A. (1987). Spin glass    BERGER , J. O. (1985). Statistical Decision Theory and Bayesian
+                       theory and beyond. In Lecture Notes in Physics,Vol. 9. World       Analysis.Springer-Verlag, New York.
+                       Scientiﬁc, Singapore.                                    HERTZ ,J.A.,K ROGH ,A.,andP ALMER , R. G. (1991).Introduction
+                    MONASSON , R., and Z ECCHINA , R. (1995). Weight space structure       to the Theory of Neural Computation.Addison-Wesley, Red-
+                       andinternalrepresentations:Adirectapproachtolearningand       wood City, CA.
+                       generalization in multilayer neural networks. Phys. Rev. Lett.    MINSKY , M., and P APERT , S. (1969). Perceptrons.MIT Press,
+                       75,2432.                                                Cambridge, MA.
+                    OPPER , M. (1994). Learning and generalization in a two-layer     WATKIN , T. L. H., R AU , A., and B IEHL , M. (1993). The statistical
+                       neural network: The role of the Vapnik–Chervonenkis dimen-       mechanics of learning a rule. Rev. Modern Phys.65,499.
+                       sion. Phys. Rev. Lett.72,2113.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    PART TWO / BUILDING BLOCKS FOR INTELLIGENCE SYSTEMS                                                       775        262-A1677  7/24/01  11:12 AM  Page 776

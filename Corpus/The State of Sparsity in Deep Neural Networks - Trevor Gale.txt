@@ -1,0 +1,678 @@
+                         The State of Sparsity in Deep Neural Networks
+
+
+
+                                Trevor Gale * 1y Erich Elsen * 2 Sara Hooker 1y
+
+
+                         Abstract                  like image classiﬁcation and machine translation commonly
+                                                   have tens of millions of parameters, and require billions ofWe rigorously evaluate three state-of-the-art tech-      ﬂoating-point operations to make a prediction for a singleniques for inducing sparsity in deep neural net-
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+     arXiv:1902.09574v1  [cs.LG]  25 Feb 2019                                             input sample.works on two large-scale learning tasks: Trans-
+            former trained on WMT 2014 English-to-German,      Sparsity has emerged as a leading approach to address these
+            and ResNet-50 trained on ImageNet. Across thou-      challenges. By sparsity, we refer to the property that a subset
+            sands of experiments, we demonstrate that com-      of the model parameters have a value of exactly zero 2 . With
+            plex techniques (Molchanov et al.,2017;Louizos      zero valued weights, any multiplications (which dominate
+            et al.,2017b) shown to yield high compression      neural network computation) can be skipped, and models
+            rates on smaller datasets perform inconsistently,      can be stored and transmitted compactly using sparse matrix
+            and that simple magnitude pruning approaches      formats. It has been shown empirically that deep neural
+            achieve comparable or better results. Based on      networks can tolerate high levels of sparsity (Han et al.,
+            insights from our experiments, we achieve a      2015;Narang et al.,2017;Ullrich et al.,2017), and this
+            new state-of-the-art sparsity-accuracy trade-off      property has been leveraged to signiﬁcantly reduce the cost
+            for ResNet-50 using only magnitude pruning. Ad-      associated with the deployment of deep neural networks,
+            ditionally, we repeat the experiments performed      and to enable the deployment of state-of-the-art models in
+            byFrankle & Carbin(2018) andLiu et al.(2018)      severely resource constrained environments (Theis et al.,
+            at scale and show that unstructured sparse archi-      2018;Kalchbrenner et al.,2018;Valin & Skoglund,2018).
+            tectures learned through pruning cannot be trained      Over the past few years, numerous techniques for induc-from scratch to the same test set performance as      ing sparsity have been proposed and the set of models anda model trained with joint sparsiﬁcation and op-      datasets used as benchmarks has grown too large to rea-timization. Together, these results highlight the      sonably expect new approaches to explore them all. Inneed for large-scale benchmarks in the ﬁeld of      addition to the lack of standardization in modeling tasks, themodel compression. We open-source our code,      distribution of benchmarks tends to slant heavily towardstop performing model checkpoints, and results of      convolutional architectures and computer vision tasks, andall hyperparameter conﬁgurations to establish rig-      the tasks used to evaluate new techniques are frequentlyorous baselines for future work on compression      not representative of the scale and complexity of real-worldand sparsiﬁcation.                          tasks where model compression is most useful. These char-
+                                                   acteristics make it difﬁcult to come away from the sparsity
+                                                   literature with a clear understanding of the relative merits
+         1. Introduction                             of different approaches.
+         Deep neural networks achieve state-of-the-art performance  In addition to practical concerns around comparing tech-
+         in a variety of domains including image classiﬁcation (He   niques, multiple independent studies have recently proposed
+         et al.,2016), machine translation (Vaswani et al.,2017),  that the value of sparsiﬁcation in neural networks has been
+         and text-to-speech (van den Oord et al.,2016;Kalchbren-  misunderstood (Frankle & Carbin,2018;Liu et al.,2018).
+         ner et al.,2018). While model quality has been shown to  While both papers suggest that sparsiﬁcation can be viewed
+         scale with model and dataset size (Hestness et al.,2017),  as a form of neural architecture search, they disagree on
+         the resources required to train and deploy large neural net-  what is necessary to achieve this. Speciﬁcally,Liu et al.
+         works can be prohibitive. State-of-the-art models for tasks     2 The term sparsity is also commonly used to refer to the pro-
+          * Equal contribution y This work was completed as part of the   portion of a neural networks weights that are zero valued. Higher
+         Google AI Residency 1 Google Brain 2 DeepMind. Correspondence   sparsity corresponds to fewer weights, and smaller computational
+         to: Trevor Gale<tgale@google.com>.                  and storage requirements. We use the term in this way throughout
+                                                   this paper.                                  The State of Sparsity in Deep Neural Networks
+
+         (2018) re-train learned sparse topologies with a random  Some of the earliest techniques for sparsifying neural net-
+         weight initialization, whereasFrankle & Carbin(2018) posit  works make use of second-order approximation of the loss
+         that the exact random weight initialization used when the   surface to avoid damaging model quality (LeCun et al.,
+         sparse architecture was learned is needed to match the test  1989;Hassibi & Stork,1992). More recent work has
+         set performance of the model sparsiﬁed during optimization.  achieved comparable compression levels with more com-
+                                                   putationally efﬁcient ﬁrst-order loss approximations, andIn this paper, we address these ambiguities to provide a   further reﬁnements have related this work to efﬁcient em-strong foundation for future work on sparsity in neural net-  pirical estimates of the Fisher information of the modelworks.Our main contributions:(1) We perform a com-  parameters (Molchanov et al.,2016;Theis et al.,2018).prehensive evaluation of variational dropout (Molchanov
+         et al.,2017),l0 regularization (Louizos et al.,2017b), and  Reinforcement learning has also been applied to automat-
+         magnitude pruning (Zhu & Gupta,2017) on Transformer  ically prune weights and convolutional ﬁlters (Lin et al.,
+         trained on WMT 2014 English-to-German and ResNet-50  2017;He et al.,2018), and a number of techniques have
+         trained on ImageNet. To the best of our knowledge, we   been proposed that draw inspiration from biological phe-
+         are the ﬁrst to apply variational dropout andl0 regulariza-  nomena, and derive from evolutionary algorithms and neu-
+         tion to models of this scale. While variational dropout and   romorphic computing (Guo et al.,2016;Bellec et al.,2017;
+         l0 regularization achieve state-of-the-art results on small   Mocanu et al.,2018).
+         datasets, we show that they perform inconsistently for large-  A key feature of a sparsity inducing technique is if andscale tasks and that simple magnitude pruning can achieve  how it imposes structure on the topology of sparse weights.comparable or better results for a reduced computational  While unstructured weight sparsity provides the most ﬂex-budget. (2) Through insights gained from our experiments,  ibility for the model, it is more difﬁcult to map efﬁcientlywe achieve a new state-of-the-art sparsity-accuracy trade-off   to parallel processors and has limited support in deep learn-for ResNet-50 using only magnitude pruning. (3) We repeat   ing software packages. For these reasons, many techniquesthe lottery ticket (Frankle & Carbin,2018) and scratch (Liu   focus on removing whole neurons and convolutional ﬁlters,et al.,2018) experiments on Transformer and ResNet-50   or impose block structure on the sparse weights (Liu et al.,across a full range of sparsity levels. We show that unstruc-  2017;Luo et al.,2017;Gray et al.,2017). While this is prac-tured sparse architectures learned through pruning cannot   tical, there is a trade-off between achievable compressionbe trained from scratch to the same test set performance as  levels for a given model quality and the level of structurea model trained with pruning as part of the optimization   imposed on the model weights. In this work, we focusprocess. (4) We open-source our code, model checkpoints,  on unstructured sparsity with the expectation that it upperand results of all hyperparameter settings to establish rig-  bounds the compression-accuracy trade-off achievable withorous baselines for future work on model compression and  structured sparsity techniques.sparsiﬁcation 3 .
+
+                                                   3. Evaluating Sparsiﬁcation Techniques at2. Sparsity in Neural Networks                 Scale
+         We brieﬂy provide a non-exhaustive review of proposed
+         approaches for inducing sparsity in deep neural networks.   As a ﬁrst step towards addressing the ambiguity in the
+                                                   sparsity literature, we rigorously evaluate magnitude-based
+         Simple heuristics based on removing small magnitude   pruning (Zhu & Gupta,2017), sparse variational dropoutweights have demonstrated high compression rates with  (Molchanov et al.,2017), andl0 regularization (Louizosminimal accuracy loss (Strom¨ ,1997;Collins & Kohli,2014;  et al.,2017b) on two large-scale deep learning applications:
+         Han et al.,2015), and further reﬁnement of the sparsiﬁca-  ImageNet classiﬁcation with ResNet-50 (He et al.,2016),
+         tion process for magnitude pruning techniques has increased   and neural machine translation (NMT) with the Transformer
+         achievable compression rates and greatly reduced computa-  on the WMT 2014 English-to-German dataset (Vaswani
+         tional complexity (Guo et al.,2016;Zhu & Gupta,2017).   et al.,2017). For each model, we also benchmark a random
+         Many techniques grounded in Bayesian statistics and in-  weight pruning technique, representing the lower bound
+         formation theory have been proposed (Dai et al.,2018;  of compression-accuracy trade-off any method should be
+         Molchanov et al.,2017;Louizos et al.,2017b;a;Ullrich   expected to achieve.
+         et al.,2017). These methods have achieved high compres-  Here we brieﬂy review the four techniques and introduce sion rates while providing deep theoretical motivation and   our experimental framework. We provide a more detailed
+         connections to classical sparsiﬁcation and regularization   overview of each technique in AppendixA.
+         techniques.
+           3 https://bit.ly/2ExE8Yj                                  The State of Sparsity in Deep Neural Networks
+
+         3.1. Magnitude Pruning                         Table 1.Constant hyperparameters for all Transformer exper-
+         Magnitude-based weight pruning schemes use the magni-  iments.More details on the standard conﬁguration for training the
+         tude of each weight as a proxy for its importance to model  Transformer can be found inVaswani et al.(2017).
+         quality, and remove the least important weights according     Hyperparameter Value
+         to some sparsiﬁcation schedule over the course of training.        dataset translatewmtendepacked
+         For our experiments, we use the approach introduced in     training iterations 500000
+         Zhu & Gupta(2017), which is conveniently available in the       batch size 2048 tokens
+         TensorFlow modelpruning library 4 . This technique allows   learning rate schedule standard transformerbase
+         for masked weights to reactivate during training based on        optimizer Adam
+         gradient updates, and makes use of a gradual sparsiﬁcation      sparsity range 50% - 98%
+         schedule with sorting-based weight thresholding to achieve       beam search beam size 4; length penalty 0.6
+         a user speciﬁed level of sparsiﬁcation. These features enable
+         high compression ratios at a reduced computational cost rel-  optimized directly using the reparameterization trick, and
+         ative to the iterative pruning and re-training approach used  the expectedl0 -norm can be computed using the value of the
+         byHan et al.(2015), while requiring less hyperparame-  cumulative distribution function of the random gate variable
+         ter tuning relative to the technique proposed byGuo et al.  evaluated at zero.
+         (2016).
+                                                   3.4. Random Pruning Baseline
+         3.2. Variational Dropout                        For our experiments, we also include a random sparsiﬁcation
+         Variational dropout was originally proposed as a re-  procedure adapted from the magnitude pruning technique
+         interpretation of dropout training as variational inference,  ofZhu & Gupta(2017). Our random pruning technique
+         providing a Bayesian justiﬁcation for the use of dropout   uses the same sparsity schedule, but differs by selecting the
+         in neural networks and enabling useful extensions to the  weights to be pruned each step at random rather based on
+         standard dropout algorithms like learnable dropout rates   magnitude and does not allow pruned weights to reactivate.
+         (Kingma et al.,2015). It was later demonstrated that by  This technique is intended to represent a lower-bound of the
+         learning a model with variational dropout and per-parameter  accuracy-sparsity trade-off curve.
+         dropout rates, weights with high dropout rates can be re-
+         moved post-training to produce highly sparse solutions   3.5. Experimental Framework
+         (Molchanov et al.,2017).                         For magnitude pruning, we used the TensorFlow model
+         Variational dropout performs variational inference to learn   pruning library. We implemented variational dropout and
+         the parameters of a fully-factorized Gaussian posterior over  l0 regularization from scratch. For variational dropout, we
+         the weights under a log-uniform prior. In the standard for-  veriﬁed our implementation by reproducing the results from
+         mulation, we apply a local reparameterization to move the   the original paper. To verify ourl0 regularization implemen-
+         sampled noise from the weights to the activations, and then   tation, we applied our weight-level code to Wide ResNet
+         apply the additive noise reparameterization to further reduce  (Zagoruyko & Komodakis,2016) trained on CIFAR-10 and
+         the variance of the gradient estimator. Under this parame-  replicated the training FLOPs reduction and accuracy re-
+         terization, we directly optimize the mean and variance of   sults from the original publication. Veriﬁcation results for
+         the neural network parameters. After training a model with  variational dropout andl0 regularization are included in
+         variational dropout, the weights with the highest learned  AppendicesBandC. For random pruning, we modiﬁed
+         dropout rates can be removed to produce a sparse model.    the TensorFlow model pruning library to randomly select
+                                                   weights as opposed to sorting them based on magnitude.
+         3.3.l0 Regularization                          For each model, we kept the number of training steps con-
+         l0 regularization explicitly penalizes the number of non-  stant across all techniques and performed extensive hyper-
+         zero weights in the model to induce sparsity. However,  parameter tuning. While magnitude pruning is relatively
+         thel0 -norm is both non-convex and non-differentiable. To   simple to apply to large models and achieves reasonably
+         address the non-differentiability of thel0 -norm,Louizos  consistent performance across a wide range of hyperparame-
+         et al.(2017b) propose a reparameterization of the neural   ters, variational dropout andl0 -regularization are much less
+         network weights as the product of a weight and a stochastic  well understood. To our knowledge, we are the ﬁrst to apply
+         gate variable sampled from a hard-concrete distribution.  these techniques to models of this scale. To produce a fair
+         The parameters of the hard-concrete distribution can be  comparison, we did not limit the amount of hyperparameter
+                                                   tuning we performed for each technique. In total, our results 4 https://bit.ly/2T8hBGn                   encompass over 4000 experiments.                                  The State of Sparsity in Deep Neural Networks
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                   Figure 2.Average sparsity in Transformer layers.Distributions
+                                                   calculated on the top performing model at 90% sparsity for each
+                                                   technique.l0 regularization and variational dropout are able to
+                                                   learn non-uniform distributions of sparsity, while magnitude prun-
+                                                   ing induces user-speciﬁed sparsity distributions (in this case, uni-
+                                                   form).
+                                                   form the random pruning technique, randomly removing
+                                                   weights produces surprisingly reasonable results, which is
+                                                   perhaps indicative of the models ability to recover from
+         Figure 1.Sparsity-BLEU trade-off curves for the Transformer.  damage during optimization.
+         Top: Pareto frontiers for each of the four sparsiﬁcation techniques
+         applied to the Transformer. Bottom: All experimental results with  What is particularly notable about the performance of mag-
+         each technique. Despite the diversity of approaches, the relative  nitude pruning is that our experiments uniformly remove the
+         performance of all three techniques is remarkably consistent. Mag-  same fraction of weights for each layer. This is in stark con-
+         nitude pruning notably outperforms more complex techniques for  trast to variational dropout andl0 regularization, where the
+         high levels of sparsity.                            distribution of sparsity across the layers is learned through
+                                                   the training process. Previous work has shown that a non-
+         4. Sparse Neural Machine Translation         uniform sparsity among different layers is key to achieving
+                                                   high compression rates (He et al.,2018), and variational
+         We adapted the Transformer (Vaswani et al.,2017) model   dropout andl0 regularization should theoretically be able to
+         for neural machine translation to use these four sparsiﬁca-  leverage this feature to learn better distributions of weights
+         tion techniques, and trained the model on the WMT 2014   for a given global sparsity.
+         English-German dataset. We sparsiﬁed all fully-connected
+         layers and embeddings, which make up 99.87% of all of   Figure2shows the distribution of sparsity across the differ-
+         the parameters in the model (the other parameters coming  ent layer types in the Transformer for the top performing
+         from biases and layer normalization). The constant hyper-  model at 90% global sparsity for each technique. Bothl0
+         parameters used for all experiments are listed in table1. We   regularization and variational dropout learn to keep more
+         followed the standard training procedure used byVaswani   parameters in the embedding, FFN layers, and the output
+         et al.(2017), but did not perform checkpoint averaging.  transforms for the multi-head attention modules and induce
+         This setup yielded a baseline BLEU score of 27.29 averaged  more sparsity in the transforms for the query and value in-
+         across ﬁve runs.                               puts to the attention modules. Despite this advantage,l0
+                                                   regularization and variational dropout did not signiﬁcantly
+         We extensively tuned the remaining hyperparameters for  outperform magnitude pruning, even yielding inferior re-
+         each technique. Details on what hyperparameters we ex-  sults at high sparsity levels.
+         plored, and the results of what settings produced the best
+         models can be found in AppendixD.                 It is also important to note that these results maintain a
+                                                   constant number of training steps across all techniques and
+                                                   that the Transformer variant with magnitude pruning trains4.1. Sparse Transformer Results & Analysis          1.24x and 1.65x faster thanl0 regularization and variational
+         All results for the Transformer are plotted in ﬁgure1. De-  dropout respectively. While the standard Transformer train-
+         spite the vast differences in these approaches, the relative   ing scheme produces excellent results for machine transla-
+         performance of all three techniques is remarkably consis-  tion, it has been shown that training the model for longer
+         tent. Whilel0 regularization and variational dropout pro-  can improve its performance by as much as 2 BLEU (Ott
+         duce the top performing models in the low-to-mid sparsity  et al.,2018). Thus, when compared for a ﬁxed training cost
+         range, magnitude pruning achieves the best results for highly  magnitude pruning has a distinct advantage over these more
+         sparse models. While all techniques were able to outper-  complicated techniques.                                  The State of Sparsity in Deep Neural Networks
+
+
+         Table 2.Constant hyperparameters for all RN50 experiments.
+            Hyperparameter Value
+                dataset ImageNet
+            training iterations 128000
+               batch size 1024 images
+          learning rate schedule standard
+               optimizer SGD with Momentum
+             sparsity range 50% - 98%
+
+
+
+         5. Sparse Image Classiﬁcation
+         To benchmark these four sparsity techniques on a large-
+         scale computer vision task, we integrated each method into
+         ResNet-50 and trained the model on the ImageNet large-
+         scale image classiﬁcation dataset. We sparsiﬁed all convolu-
+         tional and fully-connected layers, which make up 99.79%
+         of all of the parameters in the model (the other parameters  Figure 3.Sparsity-accuracy trade-off curves for ResNet-50.
+         coming from biases and batch normalization).           Top: Pareto frontiers for variational dropout, magnitude pruning,
+                                                   and random pruning applied to ResNet-50. Bottom: All experi- The hyperparameters we used for all experiments are listed  mental results with each technique. We observe large variation in
+         in Table2. Each model was trained for 128000 iterations   performance for variational dropout andl0 regularization between
+         with a batch size of 1024 images, stochastic gradient descent  Transformer and ResNet-50. Magnitude pruning and variational
+         with momentum, and the standard learning rate schedule  dropout achieve comparable performance for most sparsity levels,
+         (see AppendixE.1). This setup yielded a baseline top-1  with variational dropout achieving the best results for high sparsity
+         accuracy of 76.69% averaged across three runs. We trained   levels.
+         each model with 8-way data parallelism across 8 accelera-
+         tors. Due to the extra parameters and operations required for  will be non-zero. 5 .Louizos et al.(2017b) reported results
+         variational dropout, the model was unable to ﬁt into device  applyingl0 regularization to a wide residual network (WRN)
+         memory in this conﬁguration. For all variational dropout  (Zagoruyko & Komodakis,2016) on the CIFAR-10 dataset,
+         experiments, we used a per-device batch size of 32 images  and noted that they observed small accuracy loss at as low
+         and scaled the model over 32 accelerators.             as 8% reduction in the number of parameters during training.
+                                                   Applying our weight-levell0 regularization implementation
+         5.1. ResNet-50 Results & Analysis                  to WRN produces a model with comparable training time
+                                                   sparsity, but with no sparsity in the test-time parameters.Figure3shows results for magnitude pruning, variational   For models that achieve test-time sparsity, we observe sig-dropout, and random pruning applied to ResNet-50. Surpris-  niﬁcant accuracy degradation on CIFAR-10. This result isingly, we were unable to produce sparse ResNet-50 mod-  consistent with our observation forl els withl                                                           0 regularization applied
+               0 regularization that did not signiﬁcantly damage   to ResNet-50 on ImageNet.model quality. Across hundreds of experiments, our models
+         were either able to achieve full test set performance with  The variation in performance for variational dropout andl0
+         no sparsiﬁcation, or sparsiﬁcation with test set performance  regularization between Transformer and ResNet-50 is strik-
+         akin to random guessing. Details on all hyperparameter  ing. While achieving a good accuracy-sparsity trade-off,
+         settings explored are included in AppendixE.           variational dropout consistently ranked behindl0 regulariza-
+                                                   tion on Transformer, and was bested by magnitude pruningThis result is particularly surprising given the success ofl0   for sparsity levels of 80% and up. However, on ResNet-50regularization on Transformer. One nuance of thel0 regular-  we observe that variational dropout consistently producesization technique ofLouizos et al.(2017b) is that the model
+         can have varying sparsity levels between the training and     5 The fraction of time a parameter is set to zero during training
+         test-time versions of the model. At training time, a parame-  depends on other factors, e.g. the parameter of the hard-concrete
+         ter with a dropout rate of 10% will be zero 10% of the time   distribution. However, this point is generally true that the training
+                                                   and test-time sparsities are not necessarily equivalent, and that when sampled from the hard-concrete distribution. How-  there exists some dropout rate threshold below which a weight that
+         ever, under the test-time parameter estimator, this weight   is sometimes zero during training will be non-zero at test-time.                                  The State of Sparsity in Deep Neural Networks
+
+
+
+
+
+
+
+
+
+
+
+
+
+         Figure 4.Average sparsity in ResNet-50 layers.Distributions  Figure 5.Sparsity-accuracy trade-off curves for ResNet-50
+         calculated on the top performing model at 95% sparsity for each  with modiﬁed sparsiﬁcation scheme. Altering the distribution
+         technique. Variational dropout is able to learn non-uniform dis-  of sparsity across the layers and increasing training time yield
+         tributions of sparsity, decreasing sparsity in the input and output  signiﬁcant improvement for magnitude pruning.
+         layers that are known to be disproportionately important to model
+         quality.                                     5.2. Pushing the Limits of Magnitude Pruning
+                                                   Given that a uniform distribution of sparsity is suboptimal,
+                                                   and the signiﬁcantly smaller resource requirements for ap-
+                                                   plying magnitude pruning to ResNet-50 it is natural to won-
+         models on-par or better than magnitude pruning, and that   der how well magnitude pruning could perform if we were to
+         l0 regularization is not able to produce sparse models at  distribute the non-zero weights more carefully and increase
+         all. Variational dropout achieved particularly notable results   training time.
+         in the high sparsity range, maintaining a top-1 accuracy  To understand the limits of the magnitude pruning heuristic,over 70% with less than 4% of the parameters of a standard  we modify our ResNet-50 training setup to leave the ﬁrstResNet-50.                                  convolutional layer fully dense, and only prune the ﬁnal
+         The distribution of sparsity across different layer types in the  fully-connected layer to 80% sparsity. This heuristic is
+         best variational dropout and magnitude pruning models at  reasonable for ResNet-50, as the ﬁrst layer makes up a small
+         95% sparsity are plotted in ﬁgure4. While we kept sparsity  fraction of the total parameters in the model and the ﬁnal
+         constant across all layers for magnitude and random prun-  layer makes up only .03% of the total FLOPs. While tuning
+         ing, variational dropout signiﬁcantly reduces the amount of   the magnitude pruning ResNet-50 models, we observed that
+         sparsity induced in the ﬁrst and last layers of the model.    the best models always started and ended pruning during
+                                                   the third learning rate phase, before the second learning rateIt has been observed that the ﬁrst and last layers are often   drop. To take advantage of this, we increase the number ofdisproportionately important to model quality (Han et al.,  training steps by 1.5x by extending this learning rate region.2015;Bellec et al.,2017). In the case of ResNet-50, the   Results for ResNet-50 trained with this scheme are plottedﬁrst convolution comprises only .037% of all the parame-  in ﬁgure5.ters in the model. At 98% sparsity the ﬁrst layer has only
+         188 non-zero parameters, for an average of less than 3 pa-  With these modiﬁcations, magnitude pruning outperforms
+         rameters per output feature map. With magnitude pruning  variational dropout at all but the highest sparsity levels while
+         uniformly sparsifying each layer, it is surprising that it is   still using less resources. However, variational dropout’s per-
+         able to achieve any test set performance at all with so few  formance in the high sparsity range is particularly notable.
+         parameters in the input convolution.                 With very low amounts of non-zero weights, we ﬁnd it likely
+                                                   that the models performance on the test set is closely tied toWhile variational dropout is able to learn to distribute spar-  precise allocation of weights across the different layers, andsity non-uniformly across the layers, it comes at a signiﬁcant   that variational dropout’s ability to learn this distributionincrease in resource requirements. For ResNet-50 trained   enables it to better maintain accuracy at high sparsity levels.with variational dropout we observed a greater than 2x in-  This result indicates that efﬁcient sparsiﬁcation techniquescrease in memory consumption. When scaled across 32   that are able to learn the distribution of sparsity across layersaccelerators, ResNet-50 trained with variational dropout   are a promising direction for future work. completed training in 9.75 hours, compared to ResNet-50
+         with magnitude pruning ﬁnishing in 12.50 hours on only 8   Its also worth noting that these changes produced mod-
+         accelerators. Scaled to a 4096 batch size and 32 accelerators,  els at 80% sparsity with top-1 accuracy of 76.52%, only
+         ResNet-50 with magnitude pruning can complete the same   .17% off our baseline ResNet-50 accuracy and .41% better
+         number of epochs in just 3.15 hours.                 than the results reported byHe et al.(2018), without the                                  The State of Sparsity in Deep Neural Networks
+
+         extra complexity and computational requirements of their
+         reinforcement learning approach. This represents a new
+         state-of-the-art sparsity-accuracy trade-off for ResNet-50
+         trained on ImageNet.
+
+         6. Sparsiﬁcation as Architecture Search
+         While sparsity is traditionally thought of as a model com-
+         pression technique, two independent studies have recently
+         suggested that the value of sparsiﬁcation in neural net-
+         works is misunderstood, and that once a sparse topology
+         is learned it can be trained from scratch to the full perfor-
+         mance achieved when sparsiﬁcation was performed jointly
+         with optimization.
+         Frankle & Carbin(2018) posited that over-parameterized
+         neural networks contain small, trainable subsets of weights,
+         deemed ”winning lottery tickets”. They suggest that sparsity
+         inducing techniques are methods for ﬁnding these sparse
+         topologies, and that once found the sparse architectures can
+         be trained from scratch withthe same weight initialization  Figure 6.Scratch and lottery ticket experiments with magni- that was used when the sparse architecture was learned.  tude pruning.Top: results with Transformer. Bottom: Results They demonstrated that this property holds across different  with ResNet-50. Across all experiments, training from scratch
+         convolutional neural networks and multi-layer perceptrons   using a learned sparse architecture is unable to re-produce the
+         trained on the MNIST and CIFAR-10 datasets.          performance of models trained with sparsiﬁcation as part of the
+                                                   optimization process. Liu et al.(2018) similarly demonstrated this phenomenon
+         for a number of activation sparsity techniques on convolu-
+         tional neural networks, as well as for weight level sparsity  To clarify the questions surrounding the idea of sparsiﬁ-learned with magnitude pruning. However, they demon-  cation as a form of neural architecture search, we repeatstrate this result using a random initialization during re-  the experiments ofFrankle & Carbin(2018) andLiu et al.training.                                    (2018) on ResNet-50 and Transformer. For each model,
+         The implications of being able to train sparse architectures  we explore the full range of sparsity levels (50% - 98%)
+         from scratch once they are learned are large: once a sparse   and compare to our well-tuned models from the previous
+         topology is learned, it can be saved and shared as with   sections.
+         any other neural network architecture. Re-training then
+         can be done fully sparse, taking advantage of sparse linear  6.1. Experimental Framework
+         algebra to greatly accelerate time-to-solution. However, the  The experiments ofLiu et al.(2018) encompass taking thecombination of these two studies does not clearly establish  ﬁnal learned weight mask from a magnitude pruning model,how this potential is to be realized.                  randomly re-initializing the weights, and training the model
+         Beyond the question of whether or not the original random  with the normal training procedure (i.e., learning rate, num-
+         weight initialization is needed, both studies only explore  ber of iterations, etc.). To account for the presence of spar-
+         convolutional neural networks (and small multi-layer per-  sity at the start of training, they scale the variance of the
+         ceptrons in the case ofFrankle & Carbin(2018)). The   initial weight distribution by the number of non-zeros in the
+         majority of experiments in both studies also limited their  matrix. They additionally train a variant where they increase
+         analyses to the MNIST, CIFAR-10, and CIFAR-100 datasets.  the number of training steps (up to a factor of 2x) such that
+         While these are standard benchmarks for deep learning mod-  the re-trained model uses approximately the same number of
+         els, they are not indicative of the complexity of real-world   FLOPs during training as model trained with sparsiﬁcation
+         tasks where model compression is most useful.Liu et al.  as part of the optimization process. They refer to these two
+         (2018) do explore convolutional architectures on the Ima-  experiments as ”scratch-e” and ”scratch-b” respectively.
+         geNet datasets, but only at two relatively low sparsity levels   Frankle & Carbin(2018) follow a similar procedure, but use(30% and 60%). They also note that weight level sparsity  the same weight initialization that was used when the sparseon ImageNet is the only case where they are unable to re-  weight mask was learned and do not perform the longerproduce the full accuracy of the pruned model.          training time variant.                                  The State of Sparsity in Deep Neural Networks
+
+         For our experiments, we repeat the scratch-e, scratch-b and   sparsity levels, we observe that the quality of the models
+         lottery ticket experiments with magnitude pruning on Trans-  degrades relative to the magnitude pruning baseline as spar-
+         former and ResNet-50. For scratch-e and scratch-b, we also   sity increases. For unstructured weight sparsity, it seems
+         train variants that do not alter the initial weight distribution.  likely that the phenomenon observed byLiu et al.(2018)
+         For the Transformer, we re-trained ﬁve replicas of the best  was produced by a combination of low sparsity levels and
+         magnitude pruning hyperparameter settings at each spar-  small-to-medium sized tasks. We’d like to emphasize that
+         sity level and save the weight initialization and ﬁnal sparse   this result is only for unstructured weight sparsity, and that
+         weight mask. For each of the ﬁve learned weight masks,  prior workLiu et al.(2018) provides strong evidence that
+         we train ﬁve identical replicas for the scratch-e, scratch-  activation pruning behaves differently.
+         b, scratch-e with augmented initialization, scratch-b with
+         augmented initialization, and the lottery ticket experiments.  7. Limitations of This Study For ResNet-50, we followed the same procedure with three
+         re-trained models and three replicas at each sparsity level   Hyperparameter exploration. For all techniques and
+         for each of the ﬁve experiments. Figure6plots the averages   models, we carefully hand-tuned hyperparameters and per-
+         and min/max of all experiments at each sparsity level 6 .     formed extensive sweeps encompassing thousands of exper-
+                                                   iments over manually identiﬁed ranges of values. However,
+         6.2. Scratch and Lottery Ticket Results & Analysis      the number of possible settings vastly outnumbers the set
+                                                   of values that can be practically explored, and we cannotAcross all of our experiments, we observed that training  eliminate the possibility that some techniques signiﬁcantlyfrom scratch using a learned sparse architecture is not able   outperform others under settings we did not try.to match the performance of the same model trained with
+         sparsiﬁcation as part of the optimization process.         Neural architectures and datasets. Transformer and
+                                                   ResNet-50 were chosen as benchmark tasks to represent aAcross both models, we observed that doubling the number  cross section of large-scale deep learning tasks with diverseof training steps did improve the quality of the results for  architectures. We can’t exclude the possibility that somethe scratch experiments, but was not sufﬁcient to match the   techniques achieve consistently high performance acrosstest set performance of the magnitude pruning baseline. As   other architectures. More models and tasks should be thor-sparsity increased, we observed that the deviation between   oughly explored in future work.the models trained with magnitude pruning and those trained
+         from scratch increased. For both models, we did not observe
+         a beneﬁt from using the augmented weight initialization for  8. Conclusion
+         the scratch experiments.                         In this work, we performed an extensive evaluation of three
+         For ResNet-50, we experimented with four different learn-  state-of-the-art sparsiﬁcation techniques on two large-scale
+         ing rates schemes for the scratch-b experiments. We found  learning tasks. Notwithstanding the limitations discussed in
+         that scaling each learning rate region to double the number  section7, we demonstrated that complex techniques shown
+         of epochs produced the best results by a wide margin. These   to yield state-of-the-art compression on small datasets per-
+         results are plotted in ﬁgure6. Results for the ResNet-50   form inconsistently, and that simple heuristics can achieve
+         scratch-b experiments with the other learning rate variants   comparable or better results on a reduced computational bud-
+         are included with our release of hyperparameter tuning re-  get. Based on insights from our experiments, we achieve a
+         sults.                                      new state-of-the-art sparsity-accuracy trade-off for ResNet-
+                                                   50 with only magnitude pruning and highlight promisingFor the lottery ticket experiments, we were not able to repli-  directions for research in sparsity inducing techniques.cate the phenomenon observed byFrankle & Carbin(2018).
+         The key difference between our experiments is the complex-  Additionally, we provide strong counterexamples to two re-
+         ity of the tasks and scale of the models, and it seems likely  cently proposed theories that models learned through prun-
+         that this is the main factor contributing to our inability to   ing techniques can be trained from scratch to the same test
+         train these architecture from scratch.                 set performance of a model learned with sparsiﬁcation as
+                                                   part of the optimization process. Our results highlight theFor the scratch experiments, our results are consistent with  need for large-scale benchmarks in sparsiﬁcation and modelthe negative result observed by (Liu et al.,2018) for Im-  compression. As such, we open-source our code, check-ageNet and ResNet-50 with unstructured weight pruning.  points, and results of all hyperparameter conﬁgurations to By replicating the scratch experiments at the full range of   establish rigorous baselines for future work.
+           6 Two of the 175 Transformer experiments failed to train from
+         scratch at all and produced BLEU scores less than 1.0. We omit
+         these outliers in ﬁgure6                                  The State of Sparsity in Deep Neural Networks
+
+         Acknowledgements                         Kalchbrenner, N., Elsen, E., Simonyan, K., Noury, S.,
+                                                    Casagrande, N., Lockhart, E., Stimberg, F., van den Oord,We would like to thank Benjamin Caine, Jonathan Frankle,    A., Dieleman, S., and Kavukcuoglu, K. Efﬁcient NeuralRaphael Gontijo Lopes, Sam Greydanus, and Keren Gu for    Audio Synthesis. InProceedings of the 35th Interna-helpful discussions and feedback on drafts of this paper.      tional Conference on Machine Learning, ICML 2018,
+                                                    Stockholmsmassan, Stockholm, Sweden, July 10-15, 2018¨                           ,
+         References                                  pp. 2415–2424, 2018.
+         Bellec, G., Kappel, D., Maass, W., and Legenstein, R. A.  Kingma, D. P. and Welling, M. Auto-encoding variational
+          Deep Rewiring: Training Very Sparse Deep Networks.    bayes.CoRR, abs/1312.6114, 2013.
+          CoRR, abs/1711.05136, 2017.                    Kingma, D. P., Salimans, T., and Welling, M. Variational
+         Collins, M. D. and Kohli, P. Memory Bounded Deep Con-    dropout and the local reparameterization trick. CoRR,
+          volutional Networks.CoRR, abs/1412.1442, 2014. URL    abs/1506.02557, 2015.
+          http://arxiv.org/abs/1412.1442.          LeCun, Y., Denker, J. S., and Solla, S. A. Optimal Brain
+         Dai, B., Zhu, C., and Wipf, D. P. Compressing Neural    Damage. InNIPS, pp. 598–605. Morgan Kaufmann,
+          Networks using the Variational Information Bottleneck.    1989.
+          CoRR, abs/1802.10399, 2018.                    Lin, J., Rao, Y., Lu, J., and Zhou, J. Runtime neural pruning.
+                                                    InNIPS, pp. 2178–2188, 2017.Frankle, J. and Carbin, M. The Lottery Ticket Hy-
+          pothesis: Training Pruned Neural Networks. CoRR,  Liu, Z., Li, J., Shen, Z., Huang, G., Yan, S., and Zhang,abs/1803.03635, 2018. URLhttp://arxiv.org/    C. Learning Efﬁcient Convolutional Networks throughabs/1803.03635.                           Network Slimming. InIEEE International Conference
+                                                    on Computer Vision, ICCV 2017, Venice, Italy, OctoberGray, S., Radford, A., and Kingma, D. P. Block-    22-29, 2017, pp. 2755–2763, 2017.sparse gpu kernels.https://blog.openai.com/
+          block-sparse-gpu-kernels/, 2017.          Liu, Z., Sun, M., Zhou, T., Huang, G., and Darrell, T.
+                                                    Rethinking the Value of Network Pruning.  CoRR,
+         Guo, Y., Yao, A., and Chen, Y. Dynamic Network Surgery    abs/1810.05270, 2018.
+          for Efﬁcient DNNs. InNIPS, 2016.                Louizos, C., Ullrich, K., and Welling, M. Bayesian Com-
+         Han, S., Pool, J., Tran, J., and Dally, W. J. Learning both    pression for Deep Learning. InAdvances in Neural In-
+          Weights and Connections for Efﬁcient Neural Network.    formation Processing Systems 30: Annual Conference
+          InNIPS, pp. 1135–1143, 2015.                     on Neural Information Processing Systems 2017, 4-9 De-
+                                                    cember 2017, Long Beach, CA, USA, pp. 3290–3300,
+         Hassibi, B. and Stork, D. G. Second order derivatives for    2017a.
+          network pruning: Optimal brain surgeon. InNIPS, pp.
+          164–171. Morgan Kaufmann, 1992.                Louizos, C., Welling, M., and Kingma, D. P. Learn-
+                                                    ing Sparse Neural Networks through L0Regularization.
+         He, K., Zhang, X., Ren, S., and Sun, J. Deep Residual Learn-    CoRR, abs/1712.01312, 2017b.
+          ing for Image Recognition. In2016 IEEE Conference on  Luo, J., Wu, J., and Lin, W. Thinet: A Filter Level PruningComputer Vision and Pattern Recognition, CVPR 2016,    Method for Deep Neural Network Compression. InIEEELas Vegas, NV, USA, June 27-30, 2016, pp. 770–778,    International Conference on Computer Vision, ICCV2016.                                      2017, Venice, Italy, October 22-29, 2017, pp. 5068–5076,
+                                                    2017.He, Y., Lin, J., Liu, Z., Wang, H., Li, L., and Han, S. AMC:
+          automl for model compression and acceleration on mo-  Mitchell, T. J. and Beauchamp, J. J. Bayesian Variablebile devices. InComputer Vision - ECCV 2018 - 15th    Selection in Linear Regression.Journal of the AmericanEuropean Conference, Munich, Germany, September 8-    Statistical Association, 83(404):1023–1032, 1988.14, 2018, Proceedings, Part VII, pp. 815–832, 2018.
+                                                   Mocanu, D. C., Mocanu, E., Stone, P., Nguyen, P. H.,
+         Hestness, J., Narang, S., Ardalani, N., Diamos, G. F., Jun,    Gibescu, M., and Liotta, A. Scalable Training of Artiﬁ-
+          H., Kianinejad, H., Patwary, M. M. A., Yang, Y., and    cial Neural Networks with Adaptive Sparse Connectivity
+          Zhou, Y. Deep learning scaling is predictable, empirically.    Inspired by Network Science.Nature Communications,
+          CoRR, abs/1712.00409, 2017.                      2018.                                  The State of Sparsity in Deep Neural Networks
+
+         Molchanov, D., Ashukha, A., and Vetrov, D. P. Variational  Zagoruyko, S. and Komodakis, N. Wide Residual Networks.
+          Dropout Sparsiﬁes Deep Neural Networks. InProceed-    InProceedings of the British Machine Vision Conference
+          ings of the 34th International Conference on Machine    2016, BMVC 2016, York, UK, September 19-22, 2016,
+          Learning, ICML 2017, Sydney, NSW, Australia, 6-11 Au-    2016.
+          gust 2017, pp. 2498–2507, 2017.                  Zhu, M. and Gupta, S. To prune, or not to prune: exploring
+         Molchanov, P., Tyree, S., Karras, T., Aila, T., and Kautz, J.    the efﬁcacy of pruning for model compression.CoRR,
+          Pruning Convolutional Neural Networks for Resource Ef-    abs/1710.01878, 2017. URLhttp://arxiv.org/
+          ﬁcient Transfer Learning.CoRR, abs/1611.06440, 2016.    abs/1710.01878.
+
+         Narang, S., Diamos, G. F., Sengupta, S., and Elsen, E. Ex-
+          ploring Sparsity in Recurrent Neural Networks.CoRR,
+          abs/1704.05119, 2017.
+
+         Ott, M., Edunov, S., Grangier, D., and Auli, M. Scaling
+          Neural Machine Translation. InProceedings of the Third
+          Conference on Machine Translation: Research Papers,
+          WMT 2018, Belgium, Brussels, October 31 - November 1,
+          2018, pp. 1–9, 2018.
+
+         Rezende, D. J., Mohamed, S., and Wierstra, D. Stochastic
+          Backpropagation and Approximate Inference in Deep
+          Generative models. InICML, volume 32 ofJMLR
+          Workshop and Conference Proceedings, pp. 1278–1286.
+          JMLR.org, 2014.
+
+         Strom, N. Sparse Connection and Pruning in Large Dynamic¨
+          Artiﬁcial Neural Networks. InEUROSPEECH, 1997.
+
+         Theis, L., Korshunova, I., Tejani, A., and Huszar, F. Faster´
+          gaze prediction with dense networks and Fisher pruning.
+          CoRR, abs/1801.05787, 2018. URLhttp://arxiv.
+          org/abs/1801.05787.
+
+         Ullrich, K., Meeds, E., and Welling, M. Soft Weight-
+          Sharing for Neural Network Compression.  CoRR,
+          abs/1702.04008, 2017.
+
+         Valin, J. and Skoglund, J. Lpcnet: Improving Neural
+          Speech Synthesis Through Linear Prediction. CoRR,
+          abs/1810.11846, 2018. URLhttp://arxiv.org/
+          abs/1810.11846.
+
+         van den Oord, A., Dieleman, S., Zen, H., Simonyan, K.,
+          Vinyals, O., Graves, A., Kalchbrenner, N., Senior, A. W.,
+          and Kavukcuoglu, K. Wavenet: A Generative Model for
+          Raw Audio. InThe 9th ISCA Speech Synthesis Workshop,
+          Sunnyvale, CA, USA, 13-15 September 2016, pp. 125,
+          2016.
+
+         Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones,
+          L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Atten-
+          tion is All you Need. InAdvances in Neural Information
+          Processing Systems 30: Annual Conference on Neural In-
+          formation Processing Systems 2017, 4-9 December 2017,
+          Long Beach, CA, USA, pp. 6000–6010, 2017.                    The State of Sparsity in Deep Neural Networks: Appendix
+
+
+
+
+         A. Overview of Sparsity Inducing Techniques   p(w)with observed dataDinto an updated belief over the
+                                                   parameters in the form of the posterior distributionp(wjD).Here we provide a more detailed review of the three sparsity  In practice, computing the true posterior using Bayes’ ruletechniques we benchmarked.                      is computationally intractable and good approximations are
+                                                   needed. In variational inference, we optimize the parame-A.1. Magnitude Pruning                        ters of some parameterized modelq  (w)such thatq  (w)
+         Magnitude-based weight pruning schemes use the magni-  is a close approximation to the true posterior distribution
+         tude of each weight as a proxy for its importance to model  p(wjD)as measured by the Kullback-Leibler divergence
+         quality, and remove the least important weights according   between the two distributions. The divergence of our ap-
+         to some sparsiﬁcation schedule over the course of training.  proximate posterior from the true posterior is minimized in
+         Many variants have been proposed (Collins & Kohli,2014;  practice by maximizing the variational lower-bound
+         Han et al.,2015;Guo et al.,2016;Zhu & Gupta,2017),
+         with the key differences lying in when weights are removed,        L( ) = D              Lwhether weights should be sorted to remove a precise pro-                KL (q  (w)jjp(w)) + D ( )
+
+         portion or thresholded based on a ﬁxed or decaying value,               PwhereLand whether or not weights that have been pruned still re-        D ( ) =     Eq  (w) [logp(yjx;w)]
+                                                              (x;y)2D
+         ceive gradient updates and have the potential to return after  Using the Stochastic Gradient Variational Bayes (SGVB)being pruned.                                (Kingma et al.,2015) algorithm to optimize this bound,
+         Han et al.(2015) use iterative magnitude pruning and re-  LD ( )reduces to the standard cross-entropy loss, and the
+         training to progressively sparsify a model. The target model   KL divergence between our approximate posterior and prior
+         is ﬁrst trained to convergence, after which a portion of   over the parameters serves as a regularizer that enforces our
+         weights are removed and the model is re-trained with these   initial belief about the parametersw.
+         weights ﬁxed to zero. This process is repeated until the  In the standard formulation of variational dropout, we as-target sparsity is achieved.Guo et al.(2016) improve on   sume the weights are drawn from a fully-factorized Gaussianthis approach by allowing masked weights to still receive   approximate posterior.gradient updates, enabling the network to recover from in-
+         correct pruning decisions during optimization. They achieve
+         higher compression rates and interleave pruning steps with           wij  q  (wij ) =N( ij ;  ij  2 )ij gradient update steps to avoid expensive re-training.Zhu
+         & Gupta(2017) similarly allow gradient updates to masked  Where and are neural network parameters. For eachweights, and make use of a gradual sparsiﬁcation schedule   training step, we sample weights from this distribution andwith sorting-based weight thresholding to maintain accuracy  use thereparameterization trick(Kingma & Welling,2013; while achieving a user speciﬁed level of sparsiﬁcation.     Rezende et al.,2014) to differentiate the loss w.r.t. the pa-
+         Its worth noting that magnitude pruning can easily be   rameters through the sampling operation. Given the weights
+         adapted to induce block or activation level sparsity by re-  are normally distributed, the distribution of the activations
+         moving groups of weights based on their p-norm, average,  Bafter a linear operation like matrix multiplication or con-
+         max, or other statistics. Variants have also been proposed  volution is also Gaussian and can be calculated in closed
+         that maintain a constant level of sparsity during optimization   form 7 .
+         to enable accelerated training (Mocanu et al.,2018).
+                                                             q  (bmj jA)  N( mj ;  mj )
+         A.2. Variational Dropout
+         Consider the setting of a datasetDofNi.i.d. samples            PK               PK with  (x;y)and a standard classiﬁcation problem where the goal       mj =   ami  ij and mj =   a2  mi ij  2 and iji=1              i=1
+         is to learn the parameterswof the conditional probability  whereami 2Aare the inputs to the layer. Thus, rather
+         p(yjx;w). Bayesian inference combines some initial belief     7 We ignore correlation in the activations, as is done by over the parameterswin the form of a prior distribution   Molchanov et al.(2017)                               The State of Sparsity in Deep Neural Networks: Appendix
+
+         than sample weights, we can directly sample the activations   and and stretch the distribution s.t.zj takes value 0 or 1
+         at each layer. This step is known as thelocal reparame-  with non-zero probability.
+         terization trick, and was shown byKingma et al.(2015) to   On each training iteration,zreduce the variance of the gradients relative to the standard                      j is sampled from this distri-
+                                                   bution and multiplied with the standard neural networkformulation in which a single set of sampled weights must  weights. The expectedlbe shared for all samples in the input batch for efﬁciency.                    0 -normLC can then be calcu-
+                                                   lated using the cumulative distribution function of the hard-Molchanov et al.(2017) showed that the variance of the gra-  concrete distribution and optimized directly with stochasticdients could be further reduced by using anadditive noise  gradient descent.reparameterization, where we deﬁne a new parameter
+
+                        2 = ij   ij   2ij                      Xj j            Xj j                  LC =  (1 Qs (0j )) =   sigmoid(log 
+         Under this parameterization, we directly optimize the mean              j                  j   log  ) j=1           j=1
+         and variance of the neural network parameters.
+         Under the assumption of a log-uniform prior on the weights  At test-time,Louizos et al.(2017b) use the following esti-
+         w, the KL divergence component of our objective function   mate for the model parameters.
+         DKL (q  (wij )jjp(wij ))can be accurately approximated
+         (Molchanov et al.,2017):
+                                                                     = ~   z^
+                                                      z^=min(1;max(0;sigmoid(log )(   ) + ))
+                    DKL (q  (wij )jjp(wij )) 
+            k1  (k2 +k3 log ij ) 0:5log(1 +  1 + kij    1 )      Interestingly,Louizos et al.(2017b) showed that their ob-
+             k                                     jective function under thel1 = 0:63576 k2 = 1:87320 k3 = 1:48695                         0 penalty is a special case of a
+                                                   variational lower-bound over the parameters of the network
+                                                   under a spike and slab (Mitchell & Beauchamp,1988) prior.After training a model with variational dropout, the weights
+         with the highest values can be removed. For all their
+         experiments,Molchanov et al.(2017) removed weights with   B. Variational Dropout Implementation
+         log larger than 3.0, which corresponds to a dropout rate     Veriﬁcation
+         greater than 95%. Although they demonstrated good results,
+         it is likely that the optimal threshold varies across different  To verify our implementation of variational dropout, we
+         models and even different hyperparameter settings of the   applied it to LeNet-300-100 and LeNet-5-Caffe on MNIST
+         same model. We address this question in our experiments.   and compared our results to the original paper (Molchanov
+                                                   et al.,2017). We matched our hyperparameters to those
+                                                   used in the code released with the paper 8 . All results areA.3.l0 Regularization                          listed in table3
+         To optimize thel0 -norm, we reparameterize the model
+         weights as the product of a weight and a random vari-  Table 3.Variational Dropout MNIST Reproduction Results. able drawn from the hard-concrete distribution.           Network Experiment Sparsity (%) Accuracy (%)
+                                                            original (Molchanov et al.,2017) 98.57 98.08
+                                                            ours (log = 3.0) 97.52 98.42LeNet-300-100 ours (log = 2.0) 98.50 98.40
+                                                           ours (log = 0.1) 99.10 98.13
+                          j = ~j zj                            original (Molchanov et al.,2017) 99.60 99.25
+            wherez                                  LeNet-5-Caffe ours (log = 3.0) 99.29 99.26
+                 j  min(1;max(0;s));s=s(   ) +               ours (log = 2.0) 99.50 99.25
+             s=sigmoid((logu log(1 u) +log )= )
+                       andu  U(0;1)                 Our baseline LeNet-300-100 model achieved test set accu-
+                                                   racy of 98.42%, slightly higher than the baseline of 98.36%
+                                                   reported in (Molchanov et al.,2017). Applying our varia-In this formulation, the parameter that controls the posi-  tional dropout implementation to LeNet-300-100 with these tion of the hard-concrete distribution (and thus the proba-  hyperparameters produced a model with 97.52% global spar-bility thatzj is zero) is optimized with gradient descent. ,  sity and 98.42% test accuracy. The original paper produced , and are ﬁxed parameters that control the shape of the
+         hard-concrete distribution. controls the curvature ortem-    8 https://github.com/ars-ashuha/variational-dropout-sparsiﬁes-
+         peratureof the hard-concrete probability density function,  dnn                               The State of Sparsity in Deep Neural Networks: Appendix
+
+                                                   Our baseline WRN-28-10 implementation trained on
+                                                   CIFAR-10 achieved a test set accuracy of 95.45%. Using
+                                                   ourl0 regularization implementation and al0 -norm weight
+                                                   of .0003, we trained a model that achieved 95.34% accuracy
+                                                   on the test set while achieving a consistent training-time
+                                                   FLOPs reduction comparable to that reported byLouizos
+                                                   et al.(2017b). Floating-point operations (FLOPs) required
+                                                   to compute the forward over the course of training WRN-
+                                                   28-10 withl0 are plotted in ﬁgure7.
+                                                   During our re-implementation of the WRN experiments
+         Figure 7.Forward pass FLOPs for WRN-28-10 trained withl0   fromLouizos et al.(2017b), we identiﬁed errors in the orig- regularization.Our implementation achieves FLOPs reductions   inal publications FLOP calculations that caused the number comparable to those reported inLouizos et al.(2017b).         of ﬂoating-point operations in WRN-28-10 to be miscalcu-
+                                                   lated. We’ve contacted the authors, and hope to resolve this
+                                                   issue to clarify their performance results.
+         a model with 98.57% global sparsity, and 98.08% test accu-
+         racy. While our model achieves .34% higher tests accuracy  D. Sparse Transformer Experiments with 1% lower sparsity, we believe the discrepancy is mainly
+         due to difference in our software packages: the authors of   D.1. Magnitude Pruning Details
+         (Molchanov et al.,2017) used Theano and Lasagne for their  For our magnitude pruning experiments, we tuned four keyexperiments, while we use TensorFlow.               hyperparameters: the starting iteration of the sparsiﬁcation
+         Given our model achieves highest accuracy, we can decrease   process, the ending iteration of the sparsiﬁcation process,
+         thelog threshold to trade accuracy for more sparsity. With   the frequency of pruning steps, and the combination of other
+         alog threshold of 2.0, our model achieves 98.5% global   regularizers (dropout and label smoothing) used during train-
+         sparsity with a test set accuracy of 98.40%. With alog    ing. We trained models with 7 different target sparsities:
+         threshold of 0.1, our model achieves 99.1% global sparsity  50%, 60%, 70%, 80%, 90%, 95%, and 98%. At each of
+         with 98.13% test set accuracy, exceeding the sparsity and  these sparsity levels, we tried pruning frequencies of 1000
+         accuracy of the originally published results.            and 10000 steps. During preliminary experiments we identi-
+                                                   ﬁed that the best settings for the training step to stop pruningOn LeNet-5-Caffe, our implementation achieved a global   at were typically closer to the end of training. Based on thissparsity of 99.29% with a test set accuracy of 99.26%, ver-  insight, we explored every possible combination of start andsus the originaly published results of 99.6% sparsity with   end points for the sparsity schedule in increments of 10000099.25% accuracy. Lowering thelog threshold to 2.0, our  steps with an ending step of 300000 or greater.model achieves 99.5% sparsity with 99.25% test accuracy.
+                                                   By default, the Transformer uses dropout with a dropout
+         C.l                                      rate of 10% on the input to the encoder, decoder, and before 0 Regularization Implementation          each layer and performs label smoothing with a smooth- Veriﬁcation                             ing parameter of .1. We found that decreasing these other
+         The originall                                 regularizers produced higher quality models in the mid to 0 regularization paper uses a modiﬁed version
+         of the proposed technique for inducing group sparsity in   high sparsity range. For each hyperparameter combination,
+         models, so our weight-level implementation is not directly  we tried three different regularization settings: standard la-
+         comparable. However, to verify our implementation we   bel smoothing and dropout, label smoothing only, and no
+         trained a Wide ResNet (WRN) (Zagoruyko & Komodakis,  regularization.
+         2016) on CIFAR-10 and compared results to those reported
+         in the original publication for group sparsity.            D.2. Variational Dropout Details
+
+         As done byLouizos et al.(2017b), we applyl        For the Transformer trained with variational dropout, we 0 to the
+         ﬁrst convolutional layer in the residual blocks (i.e., where   extensively tuned the coefﬁcient for the KL divergence
+         dropout would normally be used). We use the weight decay  component of the objective function to ﬁnd models that
+         formulation for the re-parameterized weights, and scale the   achieved high accuracy with sparsity levels in the target
+         weight decay coefﬁcient to maintain the same initial length  range. We found that KL divergence weights in the range
+         scale of the parameters. We use the same batch size of 128   [:1 ;1 ], whereNis the number of samples in the training N N
+         samples and the same initial log , and train our model on a  set, produced models in our target sparsity range.
+         single GPU.                               The State of Sparsity in Deep Neural Networks: Appendix
+
+         (Molchanov et al.,2017) noted difﬁculty training some mod-  E. Sparse ResNet-50
+         els from scratch with variational dropout, as large portions
+         of the model adopt high dropout rates early in training be-  E.1. Learning Rate
+         fore the model can learn a useful representation from the   For all experiments, the we used the learning rate schemedata. To address this issue, they use a gradual ramp-up of the   used by the ofﬁcial TensorFlow ResNet-50 implementation 9 .KL divergence weight, linearly increasing the regularizer  With our batch size of 1024, this includes a linear ramp-upcoefﬁcient until it reaches the desired value.            for 5 epochs to a learning rate of .4 followed by learning
+         For our experiments, we explored using a constant regu-  rate drops by a factor of 0.1 at epochs 30, 60, and 80.
+         larizer weight, linearly increasing the regularizer weight,
+         and also increasing the regularizer weight following the   E.2. Magnitude Pruning Details
+         cubic sparsity function used with magnitude pruning. For  For magnitude pruning on ResNet-50, we trained modelsthe linear and cubic weight schedules, we tried each com-  with a target sparsity of 50%, 70%, 80%, 90%, 95%, andbination of possible start and end points in increments of   98%. At each sparsity level, we tried starting pruning at100000 steps. For each hyperparameter combination, we  steps 8k, 20k, and 40k. For each potential starting point, wealso tried the three different combinations of dropout and la-  tried ending pruning at steps 68k, 76k, and 100k. For everybel smoothing as with magnitude pruning. For each trained   hyperparameter setting, we tried pruning frequencies of 2k,model, we evaluated the model with 11log thresholds  4k, and 8k steps and explored training with and without labelin the range[0;5]. For all experiments, we initialized all   smoothing. During preliminary experiments, we observedlog 2 parameters to the constant value 10.            that removing weight decay from the model consistently
+                                                   caused signiﬁcant decreases in test accuracy. Thus, for allD.3.l0 Regularization Details                     hyperparameter combinations, we left weight decay on with
+         For Transformers trained withl                    the standard coefﬁcient. 0 regularization, we simi-
+         larly tuned the coefﬁcient for thel0 -norm in the objective  For a target sparsity of 98%, we observed that very few hy-function. We observed that much higher magnitude regu-  perparameter combinations were able to complete traininglarization coefﬁcients were needed to produce models with  without failing due to numerical issues. Out of all the hyper-the same sparsity levels relative to variational dropout. We   parameter conﬁgurations we tried, only a single model wasfound thatl                      100 -norm weights in the range[1 ; ]produced N N          able to complete training without erroring from the presencemodels in our target sparsity range.                  of NaNs. As explained in the main text, at high sparsity
+         For all experiments, we used the default settings for the   levels the ﬁrst layer of the model has very few non-zero
+         paramters of the hard-concrete distribution: = 2=3, =  parameters, leading to instability during training and low
+          0:1, and = 1:1. We initialized thelog parameters to  test set performance. Pruned ResNet-50 models with the
+         2:197, corresponding to a 10% dropout rate.            ﬁrst layer left dense did not exhibit these issues.
+
+         For each hyperparameter setting, we explored the three reg-  E.3. Variational Dropout Detailsularizer coefﬁcient schedules used with variational dropout
+         and each of the three combinations of dropout and label   For variational dropout applied to ResNet-50, we explored
+         smoothing.                                  the same combinations of start and end points for the kl-
+                                                   divergence weight ramp up as we did for the start and end
+         D.4. Random Pruning Details                     points of magnitude pruning. For all transformer experi-
+                                                   ments, we did not observe a signiﬁcant gain from using aWe identiﬁed in preliminary experiments that random prun-  cubic kl-divergence weight ramp-up schedule and thus onlying typically produces the best results by starting and ending   explored the linear ramp-up for ResNet-50. For each combi-pruning early and allowing the model to ﬁnish the rest of   nation of start and end points for the kl-divergence weight,the training steps with the ﬁnal sparse weight mask. For our  we explored 9 different coefﬁcients for the kl-divergenceexperiments, we explored all hyperparameter combinations   loss term: .01 / N, .03 / N, .05 / N, .1 / N, .3 / N, .5 / N, 1 /that we explored with magnitude pruning, and also included   N, 10 / N, and 100 / N.start/end pruning step combinations with an end step of less
+         than 300000.                                 Contrary to our experience with Transformer, we found
+                                                   ResNet-50 with variational dropout to be highly sensitive
+                                                   to the initialization for the log 2 parameters. With the
+                                                   standard setting of -10, we couldn’t match the baseline accu-
+                                                   racy, and with an initialization of -20 our models achieved
+                                                     9 https://bit.ly/2Wd2Lk0                               The State of Sparsity in Deep Neural Networks: Appendix
+
+         good test performance but no sparsity. After some exper-  pruning frequencies of 2k, 4k, and 8k and explored training
+         imentation, we were able to produce good results with an  with and without label smoothing.
+         initialization of -15.
+         While with Transformer we saw a reasonable amount of   E.6. Scratch-B Learning Rate Variants
+         variance in test set performance and sparsity with the same  For the scratch-b (Liu et al.,2018) experiments with ResNet-
+         model evaluated at different log thresholds, we did not   50, we explored four different learning rate schemes for the
+         observe the same phenomenon for ResNet-50. Across a   extended training time (2x the default number of epochs).
+         range of log values, we saw consistent accuracy and nearly
+         identical sparsity levels. For all of the results reported in the  The ﬁrst learning rate scheme we explored was uniformly
+         main text, we used a log threshold of 0.5, which we found  scaling each of the ﬁve learning rate regions to last for
+         to produce slightly better results than the standard threshold   double the number of epochs. This setup produced the best
+         of 3.0.                                     results by a wide margin. We report these results in the main
+                                                   text.
+         E.4.l0 Regularization Details                     The second learning rate scheme was to keep the standard
+                                                   learning rate, and maintain the ﬁnal learning rate for theForl0 regularization, we explored four different initial log   extra training steps as is common when ﬁne-tuning deep values corresponding to dropout rates of 1%, 5%, 10%,  neural networks. The third learning rate scheme was to and 30%. For each dropout rate, we extenively tuned thel0 -  maintain the standard learning rate, and continually drop norm weight to produce models in the desired sparsity range.  the learning rate by a factor of 0.1 every 30 epochs. The lastAfter identifying the proper range ofl0 -norm coefﬁcients,  scheme we explored was to skip the learning rate warm-up,we ran experiments with 20 different coefﬁcients in that  and drop the learning rate by 0.1 every 30 epochs. Thisrange. For each combination of these hyperparameters, we  learning rate scheme is closest to the one used byLiu et al.tried all four combinations of other regularizers: standard  (2018). We found that this scheme underperformed relativeweight decay and label smoothing, only weight decay, only  to the scaled learning rate scheme with our training setup.label smoothing, and no regularization. For weight decay,
+         we used the formulation for the reparameterized weights  Results for all learning rate schemes are included with the
+         provided in the original paper, and followed their approach  released hyperparameter tuning data.
+         of scaling the weight decay coefﬁcient based on the initial
+         dropout rate to maintain a constant length-scale between the
+         l0 regularized model and the standard model.
+         Across all of these experiments, we were unable to produce
+         ResNet models that achieved a test set performance better
+         than random guessing. For all experiments, we observed that
+         training proceeded reasonably normally until thel0 -norm
+         loss began to drop, at which point the model incurred severe
+         accuracy loss. We include the results of all hyperparameter
+         combinations in our data release.
+         Additionally, we tried a number of tweaks to the learning
+         process to improve the results to no avail. We explored
+         training the model for twice the number of epochs, training
+         with much higher initial dropout rates, modifying the 
+         parameter for the hard-concrete distribution, and a modiﬁed
+         test-time parameter estimator.
+
+         E.5. Random Pruning Details
+         For random pruning on ResNet-50, we shifted the set of
+         possible start and end points for pruning earlier in training
+         relative to those we explored for magnitude pruning. At
+         each of the sparsity levels tried with magnitude pruning,
+         we tried starting pruning at step 0, 8k, and 20k. For each
+         potential starting point, we tried ending pruning at steps 40k,
+         68k, and 76k. For every hyperparameter setting, we tried

@@ -1,0 +1,150 @@
+  Network Pruning
+
+
+     As one of the earliest works in network pruning, Yann Lecun's Optimal brain 
+     damage (OBD) paper has been cited in many of the papers.
+     Some research focuses on module network designs. "These models, such as 
+     SqueezeNet , MobileNet  and Shufflenet, are basically made up of low resolutions 
+     convolution with lesser parameters and better performance."
+     Many recent papers -I've read- ephasize on structured pruning (or sparsifying) as a 
+     compression and regularization method, as opposed to other techniques such as 
+     non-structured pruning (weight sparsifying and connection pruning), low rank 
+     approximation and vector quantization (references to these approaches can be 
+     found in the related work sections of the following papers). 
+     Difference between structred and non-structured pruning:
+       "Non-structured pruning aims to remove single parameters that have little 
+       influence on the accuracy of networks". For example, L1-norm regularization on 
+       weights is noted as non-structured pruning- since it's basically a weight 
+       sparsifying method, i.e removes single parameter. 
+       The term 'structure' refers to a structured unit in the network. So instead of 
+       pruning individual weights or connections, structured pruning targets neurons, 
+       filters, channels, layers etc. But the general implementation idea is the same as 
+       penalizing individual weights: introducing a regularization term (mostly in the 
+       form of L1-norm) to the loss function to penalize (sparsify) structures.
+     I focused on structured pruning and read through the following papers:
+
+   1. Structured Pruning of Convolutional Neural Networks via L1 
+     Regularization (August 2019)
+       "(...) network pruning is useful to remove redundant parameters, filters, 
+       channels or neurons, and address the over-fitting issue."
+
+       Provides a good review of previous work on non-structured and structured 
+       pruning.
+       "This study presents a scheme to prune filters or neurons of fully-connected 
+       layers based on L1 regularization to zero out the weights of some filters or 
+       neurons."
+       Didn't quite understand the method and implementation. There are two key 
+       elements: mask and threshold. "(...) the problem of zeroing out the values of 
+       some filters can be transformed to zero some mask." || "Though the proposed 
+       method introduces mask, the network topology will be preserved because the        mask can be absorbed into weight." || "Here the mask value cannot be 
+       completely zeroed in practical application, because the objective function (7) is 
+       non-convex and the global optimal solution may not be obtained. A strategy is 
+       adopted in the proposed method to solve this problem. If the order of 
+       magnitude of the mask value is small enough, it can be considered almost as 
+       zero. Thus, to decide whether the mask is zero, a threshold is introduced. (...) 
+       The average value of the product of the mask and the weight is used to 
+       determine whether the mask is exactly zero or not."
+       From what I understand they use L1 norm in the loss function to penalize 
+       useless filters through peenalizing masks. And a threshold value is introduced 
+       to determine when the mask is small enough to be considered zero. 
+       They test on MNIST (models: Lenet-5) and CIFAR-10 (models: VGG-16, ResNet-
+       32)
+
+   2. Learning Efficient Convolutional Networks through Network Slimming (August 
+     2017) + Git repo
+       "Our approach imposes L1 regular- ization on the scaling factors in batch 
+       normalization (BN) layers, thus it is easy to implement without introducing any 
+       change to existing CNN architectures. Pushing the values of BN scaling factors 
+       towards zero with L1 regularization enables us to identify insignificant channels 
+       (or neurons), as each scaling factor corresponds to a specific con- volutional 
+       channel (or a neuron in a fully-connected layer)."
+       They provide a good insight on advantages and disadvantages of other 
+       computation reduction methods such as low rank approximation, vector 
+       quantization etc. 
+       I belive here they use the word 'channel' to refer to filters (?).
+       "Our idea is introducing a scaling factor γ for each channel, which is multiplied 
+       to the output of that channel. Then we jointly train the network weights and 
+       these scaling factors, with sparsity regularization imposed on the latter. Finally 
+
+       we prune those channels with small factors, and fine-tune the pruned network. 
+       " --> so instead of 'mask' they use the 'scaling factor' and impose regularization 
+       on that, but the idea is very similar.
+       "The way BN normalizes the activations motivates us to design a simple and 
+       efficient method to incorporates the channel-wise scaling factors. Particularly, 
+       BN layer normalizes the internal activa- tions using mini-batch statistics." || " 
+       (...) we can directly leverage the γ parameters in BN layers as the scaling factors 
+       we need for network slim- ming. It has the great advantage of introducing no 
+       overhead to the network."       They test on CIFAR and SVHN (models: VGG-16, ResNet-164, DenseNet-40), 
+       ImageNet (model: VGG-A) and MNIST (model: Lenet)
+
+   3. Learning Structured Sparsity in Deep Neural Networks (Oct 2016) + Git repo
+       " (...) we propose Structured Sparsity Learning (SSL) method to directly learn a 
+       compressed structure of deep CNNs by group Lasso regularization during the 
+       training. SSL is a generic regularization to adaptively adjust mutiple structures 
+       in DNN, including structures of filters, channels, and filter shapes within each 
+       layer, and structure of depth beyond the layers." || " (...) offering not only well-
+       regularized big models with improved accuracy but greatly accelerated 
+       computation."
+
+
+
+        "Here W represents the collection of all weights in the DNN; ED(W) is the loss 
+       on data; R(·) is non-structured regularization applying on every weight, e.g., L2-
+       norm; and Rg(·) is the structured sparsity regularization on each layer. Because 
+       Group Lasso can effectively zero out all weights in some groups [14][15], we 
+       adopt it in our SSL. The regularization of group Lasso on a set of weights w can 
+       be represented as  
+
+
+        , where w(g) is a group of partial weights in w and G is the total number of 
+       groups. " || "In SSL, the learned “structure” is decided by the way of splitting 
+       groups of w(g). We investigate and formulate the filer-wise, channel-wise, 
+       shape-wise, and depth-wise structured sparsity (...)"
+       They test on MNIST (models: Lenet, MLP), CIFAR-10 (models: ConvNet, ResNet-
+       20) and ImageNet (model:AlexNet)
+       The authors also provide a visualization of filters after pruning, showing that 
+       only important detectors of patterns remain after pruning.
+
+       In conclusions: "Moreover, a variant of SSL can be performed as structure 
+       regularization to improve classification accuracy of state-of-the-art DNNs."
+
+   4. Learning both Weights and Connections for Efficient Neural Networks (Oct 2015)
+       "After an initial training phase, we remove all connections whose weight is 
+       lower than a threshold. This pruning converts a dense, fully-connected layer to 
+       a sparse layer." || "We then retrain the sparse network so the remaining 
+       connections can compensate for the connections that have been removed. The 
+       phases of pruning and retraining may be repeated iteratively to further reduce        network complexity. In effect, this training process learns the network 
+       connectivity in addition to the weights (...)"
+       Although the description above implies the pruning was done only for FC 
+       layers, they also do pruning on convolutional layers - although they don't 
+       provide much detail on this in the methods. But there's this statement when 
+       they explain retraining: "(...) we fix the parameters for CONV layers and only 
+       retrain the FC layers after pruning the FC layers, and vice versa.". The results 
+       section also shows that convolutional layer connections were also 
+       pruned on the tested models.
+       They test on MNIST (models: Lenet-300-100 (MLP), Lenet-5 (CNN)) and 
+       ImageNet (models: AlexNet, VGG-16)
+       The authors provide a visualization of the sparsity patterns of neurons after 
+       pruning (for an FC layer) which shows that pruning can detect visual attention 
+       regions.
+       The method used in this paper targets individual parameters (weights) to 
+       prune. So, technically this should be considered as a non-structured pruning 
+       method. However, the reason I think this is referenced as a structured pruning 
+       method is that if all connections of a neuron is pruned (i.e all input and output 
+       weights were below threshold), the neuron itself will be removed from the 
+       network:  "After pruning connections, neurons with zero input connections or 
+       zero output connections may be safely pruned."
+       SIDENOTE: They touch on the use of global average pooling instead of fully 
+       connected layers in CNNs: "There have been other attempts to reduce the 
+       number of parameters of neural networks by replacing the fully connected 
+       layer with global average pooling."
+
+   5. Many more can be picked from the references of these papers. 
+
+
+
+     There's a paper on Bayesion compression for Deep Learning from 2017. Their 
+     hypothesis is: "By employing sparsity inducing priors for hidden units (and not 
+     individual weights) we can prune neurons including all their ingoing and outgoing 
+     weights." However, the method is mathematically heavy and the related work 
+     references are quite old (1990s, 2000s). 
