@@ -8,7 +8,7 @@ gpt2.load_model(force_download=False)
 #text = gpt2.generate(return_text=True) # Generates text and returns it in an array
 #gpt2.generate(interactive=True, n_samples=1, return_text=True) # A different prompt each time
 
-my_corpus = "./Corpus/Neural_Ordinary_Differential_Equations.txt"
+my_corpus = "./Corpus/CORPUS.txt"
 custom_text = gpt2.finetune(my_corpus, return_text=False)
 
 #print(custom_text)
