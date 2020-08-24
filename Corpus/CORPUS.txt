@@ -1,4 +1,4 @@
-<|startoftext|> 
+
 
    Neural Ordinary Differential Equations
 
@@ -740,10 +740,10 @@ an ODESolve model:
 
                                        <<FIGURE>>
 
-<|endoftext|>
 
 
-<|startoftext|> 
+
+
 
               Learning differential equations that are easy to solve
 
@@ -1471,10 +1471,9 @@ f (z(t), t) separately.
 
                                        <<TABLE>>
 
-<|endoftext|>
 
 
-<<START> <<START>> <<START>>
+
 
 
           How to Train Your Neural ODE: the World of Jacobian and Kinetic Regularization
@@ -2105,10 +2104,10 @@ validation images with uniform variational dequantization (ie perturbed by unifo
 parameters.
                           <<TABLE>>
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 
                      A guide to convolution arithmetic for   deep
                                       learning
@@ -2970,10 +2969,10 @@ parameters.
                        networks for   mid  and  high level feature learning. InComputer Vision (ICCV),
                        2011 IEEE International Conference on, pages 2018–2025. IEEE.
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 
                   A Survey of Model Compression and Acceleration for Deep Neural Networks
 
@@ -3519,10 +3518,10 @@ parameters.
               modeling for video event detection,” in The IEEE Conference on                   artiﬁcial intelligence, robotics, image processing,
               Computer Vision and Pattern Recognition (CVPR), June 2014.        control theory, and control of spacecraft.
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 
             Analysis and Design of Echo State Networks
 
@@ -4598,10 +4597,10 @@ parameters.
            Wilde, D. J. (1964).Optimum seeking methods. Upper Saddle River, NJ: Prentice Hall.
            Williams, R. J., & Zipser, D. (1989). A learning algorithm for continually running
              fully recurrent neural networks.Neural Computation, 1, 270–280.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                          Bayesian Compression for Deep Learning
 
                         Christos Louizos          Karen Ullrich               Max Welling
@@ -5350,10 +5349,10 @@ parameters.
 
                             <<ALGORITHM>>           
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Channel Pruning for Accelerating Very Deep Neural Networks 
 Yihui He*  Xiangyu Zhang  Jian Sun  
 Xifian Jiaotong University  Megvii Inc.  Megvii Inc.  
@@ -5626,10 +5625,10 @@ D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich. Going deeper with convol
 [50] J. Xue, J. Li, and Y. Gong. Restructuring of deep neural network acoustic models with singular value decomposition. In INTERSPEECH, pages 2365fi2369, 2013. 2 
 [51] T.-J. Yang, Y.-H. Chen, and V. Sze. Designing energy-efficient convolutional neural networks using energy-aware pruning. arXiv preprint arXiv:1611.05128, 2016. 2 
 [52] X. Zhang, J. Zou, K. He, and J. Sun. Accelerating very deep convolutional networks for classification and detection. IEEE transactions on pattern analysis and machine intelli.gence, 38(10):1943fi1955, 2016. 1, 2, 3, 5, 6, 7 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                                     Convex Neural Networks
 
                       Yoshua Bengio, Nicolas Le Roux, Pascal Vincent, Olivier Delalleau, Patrice Marcotte
@@ -6003,10 +6002,10 @@ D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich. Going deeper with convol
                         hypothesis spaces.Machine Learning.
                      Rumelhart, D., Hinton, G., and Williams, R. (1986). Learning representations by back-propagating
                         errors.Nature, 323:533–536
-<|endoftext|>
 
 
-<|startoftext|>                  
+
+                 
                   DEEP COMPRESSION: COMPRESSING DEEP NEURAL
                   NETWORKS WITH PRUNING , T RAINED QUANTIZATION
                  AND HUFFMAN CODING
@@ -6598,10 +6597,10 @@ D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich. Going deeper with convol
                  multiplications consume2xenergy than sparse ones because it is accelerated with multi-threading.
 
                                               <<TABLE>>
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   DEEP DOUBLE DESCENT: WHERE BIGGER MODELS AND MORE DATA HURT
 
                   Preetum Nakkiran    Gal Kaplun y       Yamini Bansal y     Tristan Yang
@@ -7440,10 +7439,10 @@ D. Anguelov, D. Erhan, V. Vanhoucke, and A. Rabinovich. Going deeper with convol
                  Figure 29:Effect of Ensembling (CNNs, no label noise). Test error of an ensemble of 5 models,
                  compared to the base models. All models are 5-layer CNNs trained on CIFAR-10 with no label
                  noise, using SGD and no data augmentation. (same setting as Figure 7).
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Deep Residual Learning for Image Recognition 
 Kaiming He Xiangyu Zhang Shaoqing Ren Jian Sun Microsoft Research {kahe, v-xiangz, v-shren, jiansun}@microsoft.com 
 
@@ -7740,10 +7739,10 @@ Table 13 compares the localization results. Following [41], we first perform fio
 The above results are only based on the proposal network (RPN) in Faster R-CNN [32]. One may use the detection network (Fast R-CNN [7]) in Faster R-CNN to improve the results. But we notice that on this dataset, one image usually contains a single dominate object, and the proposal regions highly overlap with each other and thus have very similar RoI-pooled features. As a result, the image-centric training of Fast R-CNN [7] generates samples of small variations, which may not be desired for stochastic training. Motivated by this, in our current experiment we use the original R-CNN [8] that is RoI-centric, in place of Fast R-CNN. 
 Our R-CNN implementation is as follows. We apply the per-class RPN trained as above on the training images to predict bounding boxes for the ground truth class. These predicted boxes play a role of class-dependent proposals. For each training image, the highest scored 200 proposals are extracted as training samples to train an R-CNN classi.fier. The image region is cropped from a proposal, warped to 224.224 pixels, and fed into the classification network as in R-CNN [8]. The outputs of this network consist of two sibling fc layers for cls and reg, also in a per-class form. This R-CNN network is fine-tuned on the training set us.ing a mini-batch size of 256 in the RoI-centric fashion. For testing, the RPN generates the highest scored 200 proposals for each predicted class, and the R-CNN network is used to update these proposalsfi scores and box positions. 
 This method reduces the top-5 localization error to 10.6% (Table 13). This is our single-model result on the validation set. Using an ensemble of networks for both clas.sification and localization, we achieve a top-5 localization error of 9.0% on the test set. This number significantly out.performs the ILSVRC 14 results (Table 14), showing a 64% relative reduction of error. This result won the 1st place in the ImageNet localization task in ILSVRC 2015. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                     Direct Feedback Alignment Scales to Modern Deep Learning Tasks and Architectures
 
                       Julien Launay 1;2  Iacopo Poli 1  François Boniface 1  Florent Krzakala 1;2
@@ -8714,10 +8713,10 @@ This method reduces the top-5 localization error to 10.6% (Table 13). This is ou
 
                 Figure A.3: Sample renders for every scene of the LLFF-Real dataset, for NeRF and NeRF-Dual
                  trained with DFA.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Efficient Behavior of Small-World Networks 
  
 We introduce the concept of efficiency of a network, measuring how efficiently it exchanges information. By using this simple measure small-world networks are seen as systems that are both globally and locally efficient. This allows to give a clear physical meaning to the concept of small-world, and also to perform a precise quantitative analysis of both weighted and unweighted networks. We study neural networks and man-made communication and transportation systems and we show that the underlying general principle of their construction is in fact a small-world principle of high efficiency. PACS numbers 89.70.+c, 05.90.+m, 87.18.Sn, 89.40.+k 
@@ -8786,10 +8785,10 @@ TABLE III. The Boston underground transportation system (MBTA) consists of N = 1
  
 <<TABLE>>
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
             Efﬁcient Processing of Deep Neural Networks: A Tutorial and Survey
 
              Vivienne Sze,Senior Member, IEEE,Yu-Hsin Chen,Student Member, IEEE,Tien-Ju Yang,Student
@@ -10357,10 +10356,10 @@ TABLE III. The Boston underground transportation system (MBTA) consists of N = 1
          [161]A. Romero, N. Ballas, S. E. Kahou, A. Chassang, C. Gatta, and
              Y. Bengio, “Fitnets: Hints for Thin Deep Nets,”ICLR, 2015.
          [162]“Benchmarking DNN Processors,” http://eyeriss.mit.edu/benchmarking.html.
-<<END> <<END>> <<END>>
+  
 
 
-<|startoftext|>
+
 EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks 
 
 Abstract 
@@ -10586,10 +10585,10 @@ Zhou, B., Khosla, A., Lapedriza, A., Oliva, A., and Torralba,
 A. Learning deep features for discriminative localization. CVPR, pp. 29212929, 2016. 
 Zoph, B. and Le, Q. V. Neural architecture search with reinforcement learning. ICLR, 2017. 
 Zoph, B., Vasudevan, V., Shlens, J., and Le, Q. V. Learning transferable architectures for scalable image recognition. CVPR, 2018. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Energy and Policy Considerations for Deep Learning in NLP 
 
 Emma Strubell Ananya Ganesh Andrew McCallum College of Information and Computer Sciences University of Massachusetts Amherst 
@@ -10706,10 +10705,10 @@ Jasper Snoek, Hugo Larochelle, and Ryan P Adams. 2012. Practical bayesian optimi
 David R. So, Chen Liang, and Quoc V. Le. 2019. The evolved transformer. In Proceedings of the 36th International Conference on Machine Learning (ICML). 
 Emma Strubell, Patrick Verga, Daniel Andor, David Weiss, and Andrew McCallum. 2018. Linguistically-Informed Self-Attention for Se.mantic Role Labeling. In Conference on Empir.ical Methods in Natural Language Processing (EMNLP), Brussels, Belgium. 
 Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In 31st Conference on Neural Information Processing Systems (NIPS). 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Finite-Element Neural Networks for Solving Differential Equations 
 Pradeep Ramuhalli, Member, IEEE, Lalita Udpa, Senior Member, IEEE, and Satish S. Udpa, Fellow, IEEE 
 
@@ -11039,10 +11038,10 @@ REFERENCES
 [24] J. Kalkkuhl, K. J. Hunt, and H. Fritz, FEM-based neural-network approach to nonlinear modeling with application to longitudinal vehicle dynamics control, IEEE Trans. Neural Netw., vol. 10, no. 4, pp. 885897, 1999. 
 [25] R. K. Mishra and P. S. Hall, NFDTD concept, IEEE Trans. Neural Netw., vol. 16, no. 2, pp. 484490, 2005. 
 [26] D. G. Triantafyllidis and D. P. Labridis, A finite-element mesh gener.ator based on growing neural networks, IEEE Trans. Neural Netw., vol. 13, no. 6, pp. 14821496, 2002. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Floating Point Operations in Matrix-Vector Calculus 
 (Version 1.3) 
 Raphael Hunger 
@@ -11311,10 +11310,10 @@ Another sum of relevance is the sum of subsequent squared integers. Again, via c
 Bibliography 
 [1] G. H. Golub and C.F. Van Loan, Matrix Computations, Johns Hopkins University Press, 1991. 
 [2] Kh.D. Ikramov and N.V. Saveleva, Conditionally definite Matrices, Journal of Mathematical Sciences, vol. 98, no. 1, pp. 150, 2000. 
-<<END> <<END>> <END>>
+  <END>>
 
 
-<|startoftext|>
+
                                               Green AI 
 
                      Roy Schwartz   Jesse Dodge  Noah A. Smith  Oren Etzioni 
@@ -11808,10 +11807,10 @@ Bibliography
            [50]Xiangyu Zhang, Xinyu Zhou, Mengxiao Lin, and Jian Sun. ShufﬂeNet: An extremely efﬁcient convolutional
                neural network for mobile devices. InProc. of CVPR, 2018.
            [51]Barret Zoph and Quoc V. Le. Neural architecture search with reinforcement learning. InProc. of ICLR, 2017.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Harnessing Nonlinearity: Predicting Chaotic Systems and Saving Energy in Wireless Communication 
 
 Herbert Jaeger* and Harald Haas
@@ -11919,10 +11918,10 @@ Spectroscopic techniques, such as internal reflection (11) and nonlinear [second
             <<FIGURE>>
 
 Fig. 1. Structured water at the hydrophilic interface. The chlo.rine termination on a <<FORMULA>> substrate forms a hydrophilic layer that orients the water bilayer. The closest packing dis.tance (4.43) be.tween oxygen atoms in the bottom layer of water is similar to the distance (4.50) be.tween the on-top and interstitial sites of the chlorine layer, result.ing in specific bilayer orientations (30) with respect to the silicon substrate. This ordered stacking persists for three to four bilayers (1 nm) before disorientation takes place andresults in crystallite islands, forming the layered structure. The size of atoms is not to scale for the van der Waals radii. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
        Identity Mappings in Deep Residual Networks
 
        Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun
@@ -12495,10 +12494,10 @@ Fig. 1. Structured water at the hydrophilic interface. The chlo.rine termination
          image recognition. In: ICLR. (2015)
       23.He, K., Zhang, X., Ren, S., Sun, J.: Delving deep into rectiers: Surpassing human-
          level performance on imagenet Classification. In: ICCV. (2015)
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                          Language Models are Few-Shot Learners
 
                   Tom B. Brown       Benjamin Mann       Nick Ryder       Melanie Subbiah 
@@ -14797,10 +14796,10 @@ Fig. 1. Structured water at the hydrophilic interface. The chlo.rine termination
             [ZSW + 19b]Daniel M. Ziegler, Nisan Stiennon, Jeffrey Wu, Tom B. Brown, Alec Radford, Dario Amodei, Paul Chris-
                      tiano, and Geoffrey Irving. Fine-tuning language models from human preferences.ArXiv, abs/1909.08593,
                      2019.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   Learning both Weights and Connections for Efﬁcient Neural Networks
 
                                   Song Han                     Jeff Pool
@@ -15203,10 +15202,10 @@ Fig. 1. Structured water at the hydrophilic interface. The chlo.rine termination
                        Deep fried convnets.arXiv preprint arXiv:1412.7149, 2014.
                    [30]Maxwell D Collins and Pushmeet Kohli. Memory bounded deep convolutional networks.arXiv preprint
                        arXiv:1412.1442, 2014.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Learning Efficient Convolutional Networks through Network Slimming 
 
 Abstract 
@@ -15397,10 +15396,10 @@ Y. Chen. Compressing neural networks with the hashing trick. In ICML, 2015.
 [36] S. Zagoruyko. 92.5% on cifar-10 in torch. https://github.com/szagoruyko/cifar.torch. 
 [37] H. Zhou, J. M. Alvarez, and F. Porikli. Less is more: Towards compact cnns. In ECCV, 2016. 
 [38] B. Zoph and Q. V. Le. Neural architecture search with rein.forcement learning. In ICLR, 2017. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                        Learning Structured Sparsity in Deep Neural Networks
 
                    Wei Wen            Chunpeng Wu          Yandan Wang
@@ -15891,10 +15890,10 @@ Y. Chen. Compressing neural networks with the hashing trick. In ICML, 2015.
                        document recognition.Proceedings of the IEEE, 86(11):2278–2324, 1998.
                    [21]Sergey Ioffe and Christian Szegedy. Batch normalization: Accelerating deep network training by reducing
                        internal covariate shift.arXiv preprint arXiv:1502.03167, 2015.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   MIXED PRECISION TRAINING
 
 
@@ -16365,10 +16364,10 @@ Y. Chen. Compressing neural networks with the hashing trick. In ICML, 2015.
                  S. Zhou, Z. Ni, X. Zhou, H. Wen, Y. Wu, and Y. Zou. Dorefa-net: Training low bitwidth con-
                    volutional neural networks with low bitwidth gradients. CoRR, abs/1606.06160, 2016. URL
                    http://arxiv.org/abs/1606.06160.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Learning to Generalize 
 SECTION VI / MODEL NEURAL NETWORKS FOR COMPUTATION AND LEARNING 
 MANFRED OPPER 
@@ -16585,10 +16584,10 @@ BERGER, J. O. (1985). Statistical Decision Theory and Bayesian Analysis. Springe
 HERTZ,J.A.,KROGH,A.,andPALMER, R. G. (1991). Introduction to the Theory of Neural Computation. Addison-Wesley, Red.wood City, CA. 
 MINSKY, M., and PAPERT, S. (1969). Perceptrons. MIT Press, Cambridge, MA. 
 WATKIN, T. L. H., RAU, A., and BIEHL, M. (1993). The statistical mechanics of learning a rule. Rev. Modern Phys. 65, 499. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Model Compression and Acceleration for Deep Neural Networks The principles, progress, and challenges 
 
 In recent years, deep neural networks (DNNs) have received increased attention, have been applied to different applications, and achieved dramatic accuracy improvements in many tasks. These works rely on deep networks with millions or even billions of parameters, and the availability of graphics process.ing units (GPUs) with very high computation capability plays a key role in their success. For example, Krizhevsky et al. [1] achieved breakthrough results in the 2012 ImageNet Challenge using a network containing 60 million parameters with five convolutional layers and three fully connected layers. Usually, it takes two to three days to train the whole model on the ImagetNet data set with an NVIDIA K40 machine. In another example, the top face-verification results from the Labeled Faces in the Wild (LFW) data set were obtained with networks containing hundreds of millions of parameters, using a mix of convolutional, locally connected, and fully connected layers [2], [3]. It is also very time-consuming to train such a model to obtain a reasonable performance. In architectures that only rely on fully connected layers, the number of parameters can grow to billions [4]. 
@@ -16972,10 +16971,10 @@ References
 [75] Y. Wang, C. Xu, C. Xu, and D. Tao, Beyond filters: Compact feature map for portable deep model, in Proc. 34th Int. Conf. Machine Learning, 2017, pp. 3703 3711. 
 [76] Y.-D. Kim, E. Park, S. Yoo, T. Choi, L. Yang, and D. Shin, Compression of deep convolutional neural networks for fast and low power mobile applications, Computing Res. Repository, vol. abs/1511.06530, 2015. [Online]. Available: https://arxiv.org/ abs/1511.06530 
 [77] Facebook, Inc. Caffe2: A new lightweight, modular, and scalable deep learning framework. (2016). [Online]. Available: https://caffe2.ai/ 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   MOGRIFIER LSTM
 
 
@@ -17585,10 +17584,10 @@ References
                  Figure 6: Average per-word validation cross-entropies for hyperparameter combinations in the neighbourhood
                  of the best solution for a 2-layer Mogriﬁer LSTM with 24M weights on the Penn Treebank dataset.
                  feature_mask_rank and feature_mask_roundsare aliases for mogriﬁer_rank and mogriﬁer_rounds
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                                       Movement Pruning:
                               Adaptive Sparsity by Fine-Tuning
 
@@ -18097,10 +18096,10 @@ References
                  the same development as in Eq(8), we have <<FORMULA>> the loss increases. 
                  <<FORMULA>> We proved by contradiction that the guarantees on the decrease of the loss do not hold if we consider k
                  the absolute value of the score as a proxy for importance.
-<|endoftext|>
 
 
-  <|startoftext|>
+
+  
   Network Pruning
 
      As one of the earliest works in network pruning, Yann Lecun's Optimal brain 
@@ -18245,10 +18244,10 @@ References
      individual weights) we can prune neurons including all their ingoing and outgoing 
      weights." However, the method is mathematically heavy and the related work 
      references are quite old (1990s, 2000s). 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   Network Trimming: A Data-Driven Neuron Pruning
                      Approach towards Efﬁcient Deep Architectures
 
@@ -18657,10 +18656,10 @@ References
                  [19]Scherer, D., Schulz, H., Behnke, S.: Accelerating large-scale convolutional neural networks
                      with parallel graphics multiprocessors. In: Artiﬁcial Neural Networks–ICANN 2010. Springer
                      (2010) 82–91
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                   PLUG AND PLAY LANGUAGE MODELS : A SIMPLE APPROACH TO CONTROLLED TEXT GENERATION
 
                   Sumanth Dathathri       Andrea Madotto       Janice Lan       Jane Hung
@@ -19718,10 +19717,10 @@ References
 
                     <<TABLE>>
                     
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Predicting Performance for Natural Language Processing Tasks 
 
 Mengzhou Xia, Antonios Anastasopoulos, Ruochen Xu, Yiming Yang, Graham Neubig 
@@ -20010,10 +20009,10 @@ Figure 7: RMSE scores of UD task from dataset-wise mean value predictor (the das
 D Feature importance 
 
 In this section, we show the plots of feature importance for all the tasks. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                Predicting trends in the quality of state-of-the-art neural networks without access to training or testing data
 
 
@@ -20864,10 +20863,10 @@ In this section, we show the plots of feature importance for all the tasks.
 
              Figure 8: PL exponentfiversus reported Top1 Test Accuracies for pretrained DNNs available
              for five different data sets.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                         Pruning neural networks without any data by iteratively conserving synaptic ﬂow
 
                              Hidenori Tanaka                     Daniel Kunin 
@@ -21521,10 +21520,10 @@ In this section, we show the plots of feature importance for all the tasks.
 
                              <<TABLE>>
 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Scalable Gradients for Stochastic Differential Equations 
 
 Xuechen Li. Ting-Kam Leonard Wong 
@@ -22179,10 +22178,10 @@ The main hyperparameter we tuned was the coefficient for reweighting the KL. For
 
 We include the core implementation of the stochastic adjoint, assuming access to a callable Brownian motion bm, an Euler-Maruyama integrator ito_int_diag for diagonal noise SDEs, and several helper functions whose purposes can be inferred from their names. 
 <<ALGORITHM>>
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                         Scaling Laws for Neural Language Models
 
 
@@ -23512,10 +23511,10 @@ We include the core implementation of the stochastic adjoint, assuming access to
                        Christopher J. Shallue, and Roger B. Grosse. Which algorithmic choices matter at which batch
                        sizes? insights from a noisy quadratic model.CoRR, abs/1907.04164, 2019, 1907.04164. URL
                        http://arxiv.org/abs/1907.04164. 12, 18
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 Structured Pruning of Convolutional Neural Networks via L1 Regularization 
 
 CHEN YANG1,2, ZHENGHONG YANG1,2, ABDUL MATEEN KHATTAK2,3 , LIU YANG1,2, WENXIN ZHANG1,2, WANLIN GAO1,2 , AND MINJUAN WANG1,2 
@@ -23798,10 +23797,10 @@ materials, which are supported by the National Key Technology Research and Devel
 
 MINJUAN WANG received the Ph.D. degree from the School of Biological Science and Medical Engineering, Beihang University, under the super.vision of Prof. Hong Liu, in June 2017. She was a Visiting Scholar with the School of Environmen.tal Science, Ontario Agriculture College, Univer.sity of Guelph, from October 2015 to May 2017. She is currently a Postdoctoral Fellow with the College of Information and Electrical Engineer.ing, China Agricultural University. Her research 
 interests mainly include bioinformatics and the Internet of Things key technologies. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
      The 4 Research Techniques to Train Deep Neural Network Models More Efficiently
 
 
@@ -24020,10 +24019,10 @@ interests mainly include bioinformatics and the Internet of Things key technolog
          the original. Since the model is already performing well, the
          lower learning rate helps preserve the knowledge gained in
          the previous step.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                  THE LOTTERY TICKET HYPOTHESIS. FINDING SPARSE , TRAINABLE NEURAL NETWORKS
 
 
@@ -25585,10 +25584,10 @@ interests mainly include bioinformatics and the Internet of Things key technolog
 
                       Figure 45. Validation accuracy (at 30K, 60K, and 112K iterations) of VGG-19 when iteratively
                       pruned and trained with varying amounts of warmup at learning rate 0.1.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 The State of Sparsity in Deep Neural Networks 
 
 Trevor Gale *1  Erich Elsen *2 Sara Hooker 1  
@@ -25937,10 +25936,10 @@ For the scratch-b (Liu et al., 2018) experiments with ResNet.
 The first learning rate scheme we explored was uniformly scaling each of the five learning rate regions to last for double the number of epochs. This setup produced the best results by a wide margin. We report these results in the main text. 
 The second learning rate scheme was to keep the standard learning rate, and maintain the final learning rate for the extra training steps as is common when fine-tuning deep neural networks. The third learning rate scheme was to maintain the standard learning rate, and continually drop the learning rate by a factor of 0.1 every 30 epochs. The last scheme we explored was to skip the learning rate warm-up, and drop the learning rate by 0.1 every 30 epochs. This learning rate scheme is closest to the one used by Liu et al. (2018). We found that this scheme underperformed relative to the scaled learning rate scheme with our training setup. 
 Results for all learning rate schemes are included with the released hyperparameter tuning data. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
                             NetAdapt: Platform-Aware Neural Network Adaptation for Mobile Applications
 
                               Tien-Ju Yang 1⋆[0000−0003−4728−0321] , Andrew Howard 2 ,BoChen 2 ,
@@ -26549,10 +26548,10 @@ Results for all learning rate schemes are included with the released hyperparame
                       [27] Zhang, X., Zhou, X., Lin, M., Sun, J.: Shuenet: An extremely ef-
                          ﬁcient convolutional neural network for mobile devices. arXiv preprint
                          arXiv:1707.01083 (2017)
-<|endoftext|>
 
 
-<|startoftext|>
+
+
             TOWARDS THE SYSTEMATIC REPORTING OF THE ENERGY AND CARBON FOOTPRINTS OF MACHINE LEARNING 
 
                                   Peter Henderson y , Jieru Hu z , Joshua Romoff 
@@ -27733,10 +27732,10 @@ Results for all learning rate schemes are included with the released hyperparame
                                                               <<FIGURE>>
 
                   Figure 12. Pong (left) and Breakout (right) as a function of experiment length and average return.
-<|endoftext|>
 
 
-<|startoftext|>
+
+
 vDNN: Virtualized Deep Neural Networks for Scalable, Memory-Efficient Neural Network Design 
 
 Minsoo Rhu Natalia Gimelshein Jason Clemons Arslan Zulqar Stephen W. Keckler NVIDIA Santa Clara, CA 95050 
@@ -27976,10 +27975,10 @@ REFERENCES
 [51] B. Pichai, L. Hsu, and A. Bhattacharjee, Architectural Support for Address Translation on GPUs: Designing Memory Management Units for CPU/GPUs with Uni.ed Address Spaces, in Proceedings of ACM Inter.national Conference on Architectural Support for Pro.gramming Languages and Operating Systems, 2014. 
 [52] J. Power, M. Hill, and D. Wood, 'supporting x86.64 Address Translation for 100s of GPU Lanes, in Proceedings of IEEE International Symposium on High-Performance Computer Architecture, 2014. 
 [53] Z. Du, R. Fasthuber, T. Chen, P. Ienne, L. Li, T. Luo, X. Feng, Y. Chen, and O. Temam, 'shiDianNao: Shift.ing Vision Processing Closer to the Sensor, in Pro.ceedings of ACM/IEEE International Symposium on Computer Architecture, 2015. 
-<|endoftext|>
 
 
-<|startoftext|>
+
+
      You Cannot Improve What You Do not Measure: FPGA vs. ASIC Efficiency Gaps for Convolutional Neural Network Inference
 
      ANDREW BOUTROS, SADEGH YAZDANSHENAS, and VAUGHN BETZ,
@@ -28937,4 +28936,3 @@ REFERENCES
           ISLPED. 326–331.
        [57] C. Zhang and V. Prasanna. 2017. Frequency domain acceleration of convolutional neural networks on CPU-FPGA
           shared memory system. InProceedings of the FPGA. 35–44.
-<|endoftext|>
